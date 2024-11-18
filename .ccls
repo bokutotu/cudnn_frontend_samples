@@ -1,0 +1,3 @@
+%clang
+-Icudnn-frontend/include
+-I/home/bokutotu/cudnn_frontend_samples/cudnn-frontend/include
