@@ -6,6 +6,8 @@
 #include <cuda.h>
 #include <unordered_map>
 
+#include "conv.h"
+
 #define CUDNN_CHECK(status)                                                                                     \
     {                                                                                                           \
         cudnnStatus_t err = status;                                                                             \
@@ -31,89 +33,6 @@ void copy_and_print_tensor(float* device_tensor, int size, const std::string& na
     print_tensor(host_tensor.data(), size, name);
 }
 
-struct GraphComponents {
-    cudnn_frontend::graph::Graph graph;
-    std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> DY;
-    std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> W;
-    std::shared_ptr<cudnn_frontend::graph::Tensor_attributes> DX;
-};
-
-GraphComponents create_graph(
-    const std::vector<long int>& input_dim, const std::vector<long int>& weight_dim, const std::vector<long int>& output_dim,
-    const std::vector<long int>& input_stride, const std::vector<long int>& weight_stride, const std::vector<long int>& output_stride,
-    const std::vector<long int>& padding, const std::vector<long int>& stride, const std::vector<long int>& dilation) {
-
-    namespace fe = cudnn_frontend;
-    fe::graph::Graph graph;
-    graph.set_io_data_type(fe::DataType_t::FLOAT)
-         .set_intermediate_data_type(fe::DataType_t::FLOAT)
-         .set_compute_data_type(fe::DataType_t::FLOAT);
-
-    auto DY = graph.tensor(fe::graph::Tensor_attributes()
-                               .set_name("grad")
-                               .set_dim(input_dim)
-                               .set_stride(input_stride));
-    auto W  = graph.tensor(fe::graph::Tensor_attributes()
-                               .set_name("weight")
-                               .set_dim(weight_dim)
-                               .set_stride(weight_stride));
-
-    auto dgrad_options = fe::graph::Conv_dgrad_attributes().set_padding(padding).set_stride(stride).set_dilation(dilation);
-    auto DX            = graph.conv_dgrad(DY, W, dgrad_options);
-    DX->set_dim(output_dim)
-       .set_stride(output_stride)
-       .set_output(true);
-
-    GraphComponents components;
-    components.graph = graph;
-    components.DY = DY;
-    components.W = W;
-    components.DX = DX;
-    return components;
-}
-
-bool execute_graph(cudnnHandle_t handle, GraphComponents& components,
-                   float* dy_tensor, float* w_tensor, float* dx_tensor) {
-    auto& graph = components.graph;
-
-    if (graph.validate().is_good())
-        std::cout << "Graph is valid" << std::endl;
-
-    if (graph.build_operation_graph(handle).is_good())
-        std::cout << "Operation graph is built" << std::endl;
-
-    if (graph.create_execution_plans({cudnn_frontend::HeurMode_t::A}).is_good())
-        std::cout << "Execution plan is created" << std::endl;
-
-    if (graph.check_support(handle).is_good())
-        std::cout << "Graph is supported" << std::endl;
-
-    if (graph.build_plans(handle).is_good())
-        std::cout << "Plan is built" << std::endl;
-
-    int64_t workspace_size;
-    auto err = graph.get_workspace_size(workspace_size);
-    if (err.is_good())
-        std::cout << "Workspace size is " << workspace_size << std::endl;
-    else {
-        std::cout << "Error in getting workspace size" << std::endl;
-        return false;
-    }
-
-    int8_t* workspace = nullptr;
-    cudaMalloc(&workspace, workspace_size);
-
-    std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack = {
-        {components.DY, dy_tensor}, {components.W, w_tensor}, {components.DX, dx_tensor}};
-    if (graph.execute(handle, variant_pack, workspace).is_good()) {
-        std::cout << "Execution is successful" << std::endl;
-        return true;
-    } else {
-        std::cout << "Execution failed" << std::endl;
-        return false;
-    }
-}
-
 int main() {
     cudnnHandle_t handle;
     CUDNN_CHECK(cudnnCreate(&handle));
@@ -127,8 +46,11 @@ int main() {
     std::vector<long int> padding = {1};
     std::vector<long int> stride = {1};
     std::vector<long int> dilation = {1};
-
-    auto components = create_graph(input_dim, weight_dim, output_dim, input_stride, weight_stride, output_stride, padding, stride, dilation);
+    auto input_shape = Shape{.dim = input_dim.data(), .stride = input_stride.data(), .size = 3};
+    auto weight_shape = Shape{.dim = weight_dim.data(), .stride = weight_stride.data(), .size = 3};
+    auto output_shape = Shape{.dim = output_dim.data(), .stride = output_stride.data(), .size = 3};
+    auto conv_params = ConvParams{.padding = padding.data(), .stride = stride.data(), .dilation = dilation.data(), .size = 1};
+    auto components = create_graph(&input_shape, &weight_shape, &output_shape, &conv_params);
 
     float* dy_tensor = nullptr;
     cudaMalloc(&dy_tensor, 4 * 64 * 16 * sizeof(float));
@@ -153,5 +75,6 @@ int main() {
     }
 
     cudnnDestroy(handle);
+    destroy_graph_components(components);
     return 0;
 }
