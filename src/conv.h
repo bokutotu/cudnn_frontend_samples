@@ -1,59 +1,92 @@
+#pragma once
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#include <stddef.h>
+#include <stdint.h>
 #include <cudnn.h>
 
-typedef void* GraphComponentsHandle;
+typedef void* ConvGraph_t;
+
+typedef enum {
+    CONV_SUCCESS = 0,
+    CONV_FAILURE = 1,
+    CONV_INVALID_VALUE = 2,
+    CONV_NOT_SUPPORTED = 3,
+    // Add more error codes as needed
+} ConvError_t;
+
+typedef enum {
+    CONV_DATA_TYPE_HALF,
+    CONV_DATA_TYPE_FLOAT,
+    CONV_DATA_TYPE_DOUBLE,
+    // Add more as needed
+} ConvDataType_t;
 
 typedef struct {
-    long int* dim;
-    long int* stride;
-    int size;
-} Shape;
+    size_t num_dims;
+    int64_t dims[8];    // Maximum of 8 dimensions
+    int64_t strides[8]; // Corresponding strides
+} ConvTensorDescriptor_t;
 
 typedef struct {
-    long int* padding;
-    long int* stride;
-    long int* dilation;
-    int size;
-} ConvParams;
+    size_t num_dims;
+    int64_t padding[8];   // Padding for each spatial dimension
+    int64_t stride[8];    // Stride for each spatial dimension
+    int64_t dilation[8];  // Dilation for each spatial dimension
+} ConvConvolutionDescriptor_t;
 
-// Forward convolution
-GraphComponentsHandle create_forward_graph(
+// Build graphs
+ConvError_t build_fprop_graph(
     cudnnHandle_t handle,
-    Shape* input_shape,
-    Shape* weight_shape,
-    Shape* output_shape,
-    ConvParams* conv_params);
+    ConvGraph_t* graph_out,
+    const ConvTensorDescriptor_t* input_desc,
+    const ConvTensorDescriptor_t* filter_desc,
+    const ConvTensorDescriptor_t* output_desc,
+    const ConvConvolutionDescriptor_t* conv_desc,
+    ConvDataType_t data_type);
 
-// Backward data convolution
-GraphComponentsHandle create_backward_data_graph(
+ConvError_t build_dgrad_graph(
     cudnnHandle_t handle,
-    Shape* input_shape,
-    Shape* weight_shape,
-    Shape* output_shape,
-    ConvParams* conv_params);
+    ConvGraph_t* graph_out,
+    const ConvTensorDescriptor_t* dy_desc,
+    const ConvTensorDescriptor_t* w_desc,
+    const ConvTensorDescriptor_t* dx_desc,
+    const ConvConvolutionDescriptor_t* conv_desc,
+    ConvDataType_t data_type);
 
-// Backward filter convolution
-GraphComponentsHandle create_backward_filter_graph(
+ConvError_t build_wgrad_graph(
     cudnnHandle_t handle,
-    Shape* input_shape,
-    Shape* weight_shape,
-    Shape* output_shape,
-    ConvParams* conv_params);
+    ConvGraph_t* graph_out,
+    const ConvTensorDescriptor_t* x_desc,
+    const ConvTensorDescriptor_t* dy_desc,
+    const ConvTensorDescriptor_t* dw_desc,
+    const ConvConvolutionDescriptor_t* conv_desc,
+    ConvDataType_t data_type);
+
+// Get workspace size
+ConvError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size);
 
 // Execute graph
-bool execute_graph(
+ConvError_t execute_graph(
     cudnnHandle_t handle,
-    GraphComponentsHandle components_handle,
-    void* tensor_a,
-    void* tensor_b,
-    void* tensor_c);
+    ConvGraph_t graph,
+    void* input_ptrs[],
+    void* output_ptrs[],
+    void* workspace);
 
-// Destroy graph components
-void destroy_graph_components(GraphComponentsHandle components_handle);
+// Destroy graph
+void destroy_graph(ConvGraph_t graph);
+
+// Get number of inputs and outputs
+ConvError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs);
+ConvError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs);
 
 #ifdef __cplusplus
 }
 #endif
+
+// #endif // CONV_API_H
+

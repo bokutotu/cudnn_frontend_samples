@@ -1,315 +1,411 @@
 #include "conv.h"
 #include <cudnn_frontend.h>
 #include <memory>
-#include <array>
+#include <vector>
+#include <unordered_map>
 
-// Define unique IDs for tensors
-constexpr long int X_TENSOR_ID = 0;
-constexpr long int W_TENSOR_ID = 1;
-constexpr long int Y_TENSOR_ID = 2;
-constexpr long int DX_TENSOR_ID = 3;
-constexpr long int DY_TENSOR_ID = 4;
-constexpr long int DW_TENSOR_ID = 5;
-
-std::pair<std::vector<long int>, std::vector<long int>> to_vector(Shape* shape) {
-    return std::make_pair(
-        std::vector<long int>(shape->dim, shape->dim + shape->size),
-        std::vector<long int>(shape->stride, shape->stride + shape->size));
-}
-
-std::tuple<std::vector<long int>, std::vector<long int>, std::vector<long int>> to_tuple(ConvParams* params) {
-    return std::make_tuple(
-        std::vector<long int>(params->padding, params->padding + params->size),
-        std::vector<long int>(params->stride, params->stride + params->size),
-        std::vector<long int>(params->dilation, params->dilation + params->size));
-}
-
-struct GraphComponents {
-    std::unique_ptr<cudnn_frontend::OperationGraph> graph;
-    std::unique_ptr<cudnn_frontend::Tensor> tensor_a;
-    std::unique_ptr<cudnn_frontend::Tensor> tensor_b;
-    std::unique_ptr<cudnn_frontend::Tensor> tensor_c;
+struct ConvGraph {
+    std::shared_ptr<cudnn_frontend::graph::Graph> graph_ptr;
+    std::vector<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>> input_tensors;
+    std::vector<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>> output_tensors;
 };
 
-GraphComponentsHandle create_forward_graph(
-    cudnnHandle_t handle,
-    Shape* input_shape,
-    Shape* weight_shape,
-    Shape* output_shape,
-    ConvParams* conv_params) {
-
-    auto components = new GraphComponents();
-
-    auto [x_dim, x_stride] = to_vector(input_shape);
-    auto [w_dim, w_stride] = to_vector(weight_shape);
-    auto [y_dim, y_stride] = to_vector(output_shape);
-    auto [padding, conv_stride, dilation] = to_tuple(conv_params);
-
-    // Create tensors
-    auto tensor_x = cudnn_frontend::TensorBuilder()
-                        .setDim(x_dim.size(), x_dim.data())
-                        .setStrides(x_stride.size(), x_stride.data())
-                        .setId(X_TENSOR_ID)
-                        .setAlignment(16)
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .build();
-
-    auto tensor_w = cudnn_frontend::TensorBuilder()
-                        .setDim(w_dim.size(), w_dim.data())
-                        .setStrides(w_stride.size(), w_stride.data())
-                        .setId(W_TENSOR_ID)
-                        .setAlignment(16)
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .build();
-
-    auto tensor_y = cudnn_frontend::TensorBuilder()
-                        .setDim(y_dim.size(), y_dim.data())
-                        .setStrides(y_stride.size(), y_stride.data())
-                        .setId(Y_TENSOR_ID)
-                        .setAlignment(16)
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .build();
-
-    auto convDesc = cudnn_frontend::ConvDescBuilder()
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .setMathMode(CUDNN_CROSS_CORRELATION)
-                        .setNDims(conv_params->size)
-                        .setStrides(conv_params->size, conv_stride.data())
-                        .setPrePadding(conv_params->size, padding.data())
-                        .setPostPadding(conv_params->size, padding.data())
-                        .setDilation(conv_params->size, dilation.data())
-                        .build();
-
-    // Convolution operation
-    auto conv_op = cudnn_frontend::OperationBuilder(CUDNN_BACKEND_OPERATION_CONVOLUTION_FORWARD_DESCRIPTOR)
-                       .setxDesc(tensor_x)
-                       .setwDesc(tensor_w)
-                       .setyDesc(tensor_y)
-                       .setcDesc(convDesc)
-                       .setAlpha(1.0f)
-                       .setBeta(0.0f)
-                       .build();
-
-    // Build the graph
-    std::array<cudnn_frontend::Operation const*, 1> ops = {&conv_op};
-    auto opGraph = cudnn_frontend::OperationGraphBuilder()
-                       .setHandle(handle)
-                       .setOperationGraph(ops.size(), ops.data())
-                       .build();
-
-    components->graph = std::make_unique<cudnn_frontend::OperationGraph>(std::move(opGraph));
-    components->tensor_a = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_x));
-    components->tensor_b = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_w));
-    components->tensor_c = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_y));
-
-    return static_cast<GraphComponentsHandle>(components);
-}
-
-GraphComponentsHandle create_backward_data_graph(
-    cudnnHandle_t handle,
-    Shape* input_shape,
-    Shape* weight_shape,
-    Shape* output_shape,
-    ConvParams* conv_params) {
-    auto components = new GraphComponents();
-
-    auto [x_dim, x_stride] = to_vector(input_shape);
-    auto [w_dim, w_stride] = to_vector(weight_shape);
-    auto [y_dim, y_stride] = to_vector(output_shape);
-    auto [padding, conv_stride, dilation] = to_tuple(conv_params);
-
-    // Create tensors
-    auto tensor_dy = cudnn_frontend::TensorBuilder()
-                         .setDim(y_dim.size(), y_dim.data())
-                         .setStrides(y_stride.size(), y_stride.data())
-                         .setId(DY_TENSOR_ID)
-                         .setAlignment(16)
-                         .setDataType(CUDNN_DATA_FLOAT)
-                         .build();
-
-    auto tensor_w = cudnn_frontend::TensorBuilder()
-                        .setDim(w_dim.size(), w_dim.data())
-                        .setStrides(w_stride.size(), w_stride.data())
-                        .setId(W_TENSOR_ID)
-                        .setAlignment(16)
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .build();
-
-    auto tensor_dx = cudnn_frontend::TensorBuilder()
-                         .setDim(x_dim.size(), x_dim.data())
-                         .setStrides(x_stride.size(), x_stride.data())
-                         .setId(DX_TENSOR_ID)
-                         .setAlignment(16)
-                         .setDataType(CUDNN_DATA_FLOAT)
-                         .build();
-
-    auto convDesc = cudnn_frontend::ConvDescBuilder()
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .setMathMode(CUDNN_CROSS_CORRELATION)
-                        .setNDims(conv_params->size)
-                        .setStrides(conv_params->size, conv_stride.data())
-                        .setPrePadding(conv_params->size, padding.data())
-                        .setPostPadding(conv_params->size, padding.data())
-                        .setDilation(conv_params->size, dilation.data())
-                        .build();
-
-    // Backward data operation
-    auto backward_data_op = cudnn_frontend::OperationBuilder(CUDNN_BACKEND_OPERATION_CONVOLUTION_BACKWARD_DATA_DESCRIPTOR)
-                                .setdyDesc(tensor_dy)
-                                .setwDesc(tensor_w)
-                                .setdxDesc(tensor_dx)
-                                .setcDesc(convDesc)
-                                .setAlpha(1.0f)
-                                .setBeta(0.0f)
-                                .build();
-
-    // Build the graph
-    std::array<cudnn_frontend::Operation const*, 1> ops = {&backward_data_op};
-    auto opGraph = cudnn_frontend::OperationGraphBuilder()
-                       .setHandle(handle)
-                       .setOperationGraph(ops.size(), ops.data())
-                       .build();
-
-    components->graph = std::make_unique<cudnn_frontend::OperationGraph>(std::move(opGraph));
-    components->tensor_a = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_dy));
-    components->tensor_b = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_w));
-    components->tensor_c = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_dx));
-
-    return static_cast<GraphComponentsHandle>(components);
-}
-
-GraphComponentsHandle create_backward_filter_graph(
-    cudnnHandle_t handle,
-    Shape* input_shape,
-    Shape* weight_shape,
-    Shape* output_shape,
-    ConvParams* conv_params) {
-    auto components = new GraphComponents();
-
-    auto [x_dim, x_stride] = to_vector(input_shape);
-    auto [w_dim, w_stride] = to_vector(weight_shape);
-    auto [y_dim, y_stride] = to_vector(output_shape);
-    auto [padding, conv_stride, dilation] = to_tuple(conv_params);
-
-    // Create tensors
-    auto tensor_x = cudnn_frontend::TensorBuilder()
-                        .setDim(x_dim.size(), x_dim.data())
-                        .setStrides(x_stride.size(), x_stride.data())
-                        .setId(X_TENSOR_ID)
-                        .setAlignment(16)
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .build();
-
-    auto tensor_dy = cudnn_frontend::TensorBuilder()
-                         .setDim(y_dim.size(), y_dim.data())
-                         .setStrides(y_stride.size(), y_stride.data())
-                         .setId(DY_TENSOR_ID)
-                         .setAlignment(16)
-                         .setDataType(CUDNN_DATA_FLOAT)
-                         .build();
-
-    auto tensor_dw = cudnn_frontend::TensorBuilder()
-                         .setDim(w_dim.size(), w_dim.data())
-                         .setStrides(w_stride.size(), w_stride.data())
-                         .setId(DW_TENSOR_ID)
-                         .setAlignment(16)
-                         .setDataType(CUDNN_DATA_FLOAT)
-                         .build();
-
-    auto convDesc = cudnn_frontend::ConvDescBuilder()
-                        .setDataType(CUDNN_DATA_FLOAT)
-                        .setMathMode(CUDNN_CROSS_CORRELATION)
-                        .setNDims(conv_params->size)
-                        .setStrides(conv_params->size, conv_stride.data())
-                        .setPrePadding(conv_params->size, padding.data())
-                        .setPostPadding(conv_params->size, padding.data())
-                        .setDilation(conv_params->size, dilation.data())
-                        .build();
-
-    // Backward filter operation
-    auto backward_filter_op = cudnn_frontend::OperationBuilder(CUDNN_BACKEND_OPERATION_CONVOLUTION_BACKWARD_FILTER_DESCRIPTOR)
-                                  .setxDesc(tensor_x)
-                                  .setdyDesc(tensor_dy)
-                                  .setwDesc(tensor_dw)
-                                  .setcDesc(convDesc)
-                                  .setAlpha(1.0f)
-                                  .setBeta(0.0f)
-                                  .build();
-
-    // Build the graph
-    std::array<cudnn_frontend::Operation const*, 1> ops = {&backward_filter_op};
-    auto opGraph = cudnn_frontend::OperationGraphBuilder()
-                       .setHandle(handle)
-                       .setOperationGraph(ops.size(), ops.data())
-                       .build();
-
-    components->graph = std::make_unique<cudnn_frontend::OperationGraph>(std::move(opGraph));
-    components->tensor_a = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_x));
-    components->tensor_b = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_dy));
-    components->tensor_c = std::make_unique<cudnn_frontend::Tensor>(std::move(tensor_dw));
-
-    return static_cast<GraphComponentsHandle>(components);
-}
-
-bool execute_graph(
-    cudnnHandle_t handle,
-    GraphComponentsHandle components_handle,
-    void* tensor_a,
-    void* tensor_b,
-    void* tensor_c) {
-
-    auto components = static_cast<GraphComponents*>(components_handle);
-
-    // Select the engine
-    auto heuristics = cudnn_frontend::EngineHeuristicsBuilder()
-                          .setOperationGraph(*(components->graph))
-                          .setHeurMode(CUDNN_HEUR_MODE_INSTANT)
-                          .build();
-
-    auto& engine_configs = heuristics.getEngineConfig(heuristics.getEngineConfigCount());
-
-    // Create the execution plan
-    auto plan = cudnn_frontend::ExecutionPlanBuilder()
-                    .setHandle(handle)
-                    .setEngineConfig(engine_configs[0], components->graph->getTag())
-                    .build();
-
-    if (plan.get_status() != CUDNN_STATUS_SUCCESS) {
-        std::cerr << "Failed to create execution plan" << std::endl;
-        return false;
+// Function to map custom ConvDataType_t to cudnn_frontend::DataType_t
+static cudnn_frontend::DataType_t getCudnnDataType(ConvDataType_t data_type) {
+    using namespace cudnn_frontend;
+    switch (data_type) {
+        case CONV_DATA_TYPE_HALF:
+            return DataType_t::HALF;
+        case CONV_DATA_TYPE_FLOAT:
+            return DataType_t::FLOAT;
+        case CONV_DATA_TYPE_DOUBLE:
+            return DataType_t::DOUBLE;
+        // Add more cases as needed
+        default:
+            return DataType_t::FLOAT; // Default to float
     }
-
-    // Prepare the variant pack
-    void* data_ptrs[] = {tensor_a, tensor_b, tensor_c};
-    int64_t uids[]    = {
-        components->tensor_a->getId(),
-        components->tensor_b->getId(),
-        components->tensor_c->getId()
-    };
-
-    auto variantPack = cudnn_frontend::VariantPackBuilder()
-                           .setWorkspacePointer(nullptr)
-                           .setDataPointers(3, data_ptrs)
-                           .setUids(3, uids)
-                           .build();
-
-    if (variantPack.get_status() != CUDNN_STATUS_SUCCESS) {
-        std::cerr << "Failed to create variant pack" << std::endl;
-        return false;
-    }
-
-    // Execute
-    auto status = cudnnBackendExecute(handle, plan.get_raw_desc(), variantPack.get_raw_desc());
-    if (status != CUDNN_STATUS_SUCCESS) {
-        std::cerr << "Execution failed" << std::endl;
-        return false;
-    }
-
-    return true;
 }
 
-void destroy_graph_components(GraphComponentsHandle components_handle) {
-    auto components = static_cast<GraphComponents*>(components_handle);
-    delete components;
+// Build Forward Propagation Graph
+ConvError_t build_fprop_graph(
+    cudnnHandle_t handle,
+    ConvGraph_t* graph_out,
+    const ConvTensorDescriptor_t* input_desc,
+    const ConvTensorDescriptor_t* filter_desc,
+    const ConvTensorDescriptor_t* output_desc,
+    const ConvConvolutionDescriptor_t* conv_desc,
+    ConvDataType_t data_type)
+{
+    if (graph_out == nullptr || input_desc == nullptr || filter_desc == nullptr ||
+        output_desc == nullptr || conv_desc == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    try {
+        using namespace cudnn_frontend;
+        ConvGraph* conv_graph = new ConvGraph();
+
+        auto graph = std::make_shared<graph::Graph>();
+        auto cudnn_data_type = getCudnnDataType(data_type);
+        graph->set_io_data_type(cudnn_data_type).set_compute_data_type(cudnn_data_type);
+
+        // Create input tensor X
+        std::vector<int64_t> x_dims(input_desc->dims, input_desc->dims + input_desc->num_dims);
+        std::vector<int64_t> x_strides(input_desc->strides, input_desc->strides + input_desc->num_dims);
+        auto X = graph->tensor(graph::Tensor_attributes()
+                                   .set_name("input")
+                                   .set_dim(x_dims)
+                                   .set_stride(x_strides));
+
+        // Create filter tensor W
+        std::vector<int64_t> w_dims(filter_desc->dims, filter_desc->dims + filter_desc->num_dims);
+        std::vector<int64_t> w_strides(filter_desc->strides, filter_desc->strides + filter_desc->num_dims);
+        auto W = graph->tensor(graph::Tensor_attributes()
+                                   .set_name("filter")
+                                   .set_dim(w_dims)
+                                   .set_stride(w_strides));
+
+        // Set convolution options
+        std::vector<int64_t> padding(conv_desc->padding, conv_desc->padding + conv_desc->num_dims);
+        std::vector<int64_t> stride(conv_desc->stride, conv_desc->stride + conv_desc->num_dims);
+        std::vector<int64_t> dilation(conv_desc->dilation, conv_desc->dilation + conv_desc->num_dims);
+
+        auto conv_options = graph::Conv_fprop_attributes()
+                                .set_padding(padding)
+                                .set_stride(stride)
+                                .set_dilation(dilation);
+
+        auto Y = graph->conv_fprop(X, W, conv_options);
+
+        // Set output tensor Y properties
+        std::vector<int64_t> y_dims(output_desc->dims, output_desc->dims + output_desc->num_dims);
+        Y->set_dim(y_dims).set_output(true);
+
+        // Validate and build the graph
+        auto status = graph->validate();
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->build_operation_graph(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->create_execution_plans({HeurMode_t::A});
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->check_support(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->build_plans(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        conv_graph->graph_ptr = graph;
+        conv_graph->input_tensors.push_back(X);
+        conv_graph->input_tensors.push_back(W);
+        conv_graph->output_tensors.push_back(Y);
+
+        *graph_out = static_cast<ConvGraph_t>(conv_graph);
+        return CONV_SUCCESS;
+    } catch (const std::exception& e) {
+        return CONV_FAILURE;
+    }
+}
+
+// Build Data Gradient Graph
+ConvError_t build_dgrad_graph(
+    cudnnHandle_t handle,
+    ConvGraph_t* graph_out,
+    const ConvTensorDescriptor_t* dy_desc,
+    const ConvTensorDescriptor_t* w_desc,
+    const ConvTensorDescriptor_t* dx_desc,
+    const ConvConvolutionDescriptor_t* conv_desc,
+    ConvDataType_t data_type)
+{
+    if (graph_out == nullptr || dy_desc == nullptr || w_desc == nullptr ||
+        dx_desc == nullptr || conv_desc == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    try {
+        using namespace cudnn_frontend;
+        ConvGraph* conv_graph = new ConvGraph();
+
+        auto graph = std::make_shared<graph::Graph>();
+        auto cudnn_data_type = getCudnnDataType(data_type);
+        graph->set_io_data_type(cudnn_data_type)
+            .set_intermediate_data_type(cudnn_data_type)
+            .set_compute_data_type(cudnn_data_type);
+
+        // Create input tensor DY
+        std::vector<int64_t> dy_dims(dy_desc->dims, dy_desc->dims + dy_desc->num_dims);
+        std::vector<int64_t> dy_strides(dy_desc->strides, dy_desc->strides + dy_desc->num_dims);
+        auto DY = graph->tensor(graph::Tensor_attributes()
+                                    .set_name("grad_output")
+                                    .set_dim(dy_dims)
+                                    .set_stride(dy_strides));
+
+        // Create weight tensor W
+        std::vector<int64_t> w_dims(w_desc->dims, w_desc->dims + w_desc->num_dims);
+        std::vector<int64_t> w_strides(w_desc->strides, w_desc->strides + w_desc->num_dims);
+        auto W = graph->tensor(graph::Tensor_attributes()
+                                   .set_name("weight")
+                                   .set_dim(w_dims)
+                                   .set_stride(w_strides));
+
+        // Set convolution options
+        std::vector<int64_t> padding(conv_desc->padding, conv_desc->padding + conv_desc->num_dims);
+        std::vector<int64_t> stride(conv_desc->stride, conv_desc->stride + conv_desc->num_dims);
+        std::vector<int64_t> dilation(conv_desc->dilation, conv_desc->dilation + conv_desc->num_dims);
+
+        auto dgrad_options = graph::Conv_dgrad_attributes()
+                                 .set_padding(padding)
+                                 .set_stride(stride)
+                                 .set_dilation(dilation);
+
+        auto DX = graph->conv_dgrad(DY, W, dgrad_options);
+
+        // Set output tensor DX properties
+        std::vector<int64_t> dx_dims(dx_desc->dims, dx_desc->dims + dx_desc->num_dims);
+        DX->set_dim(dx_dims).set_output(true);
+
+        // Validate and build the graph
+        auto status = graph->validate();
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->build_operation_graph(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->create_execution_plans({HeurMode_t::A});
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->check_support(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->build_plans(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        conv_graph->graph_ptr = graph;
+        conv_graph->input_tensors.push_back(DY);
+        conv_graph->input_tensors.push_back(W);
+        conv_graph->output_tensors.push_back(DX);
+
+        *graph_out = static_cast<ConvGraph_t>(conv_graph);
+        return CONV_SUCCESS;
+    } catch (const std::exception& e) {
+        return CONV_FAILURE;
+    }
+}
+
+// Build Weight Gradient Graph
+ConvError_t build_wgrad_graph(
+    cudnnHandle_t handle,
+    ConvGraph_t* graph_out,
+    const ConvTensorDescriptor_t* x_desc,
+    const ConvTensorDescriptor_t* dy_desc,
+    const ConvTensorDescriptor_t* dw_desc,
+    const ConvConvolutionDescriptor_t* conv_desc,
+    ConvDataType_t data_type)
+{
+    if (graph_out == nullptr || x_desc == nullptr || dy_desc == nullptr ||
+        dw_desc == nullptr || conv_desc == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    try {
+        using namespace cudnn_frontend;
+        ConvGraph* conv_graph = new ConvGraph();
+
+        auto graph = std::make_shared<graph::Graph>();
+        auto cudnn_data_type = getCudnnDataType(data_type);
+        graph->set_io_data_type(cudnn_data_type)
+            .set_intermediate_data_type(cudnn_data_type)
+            .set_compute_data_type(cudnn_data_type);
+
+        // Create input tensor X
+        std::vector<int64_t> x_dims(x_desc->dims, x_desc->dims + x_desc->num_dims);
+        std::vector<int64_t> x_strides(x_desc->strides, x_desc->strides + x_desc->num_dims);
+        auto X = graph->tensor(graph::Tensor_attributes()
+                                   .set_name("input")
+                                   .set_dim(x_dims)
+                                   .set_stride(x_strides));
+
+        // Create input tensor DY
+        std::vector<int64_t> dy_dims(dy_desc->dims, dy_desc->dims + dy_desc->num_dims);
+        std::vector<int64_t> dy_strides(dy_desc->strides, dy_desc->strides + dy_desc->num_dims);
+        auto DY = graph->tensor(graph::Tensor_attributes()
+                                    .set_name("grad_output")
+                                    .set_dim(dy_dims)
+                                    .set_stride(dy_strides));
+
+        // Set convolution options
+        std::vector<int64_t> padding(conv_desc->padding, conv_desc->padding + conv_desc->num_dims);
+        std::vector<int64_t> stride(conv_desc->stride, conv_desc->stride + conv_desc->num_dims);
+        std::vector<int64_t> dilation(conv_desc->dilation, conv_desc->dilation + conv_desc->num_dims);
+
+        auto wgrad_options = graph::Conv_wgrad_attributes()
+                                 .set_padding(padding)
+                                 .set_stride(stride)
+                                 .set_dilation(dilation);
+
+        auto DW = graph->conv_wgrad(DY, X, wgrad_options);
+
+        // Set output tensor DW properties
+        std::vector<int64_t> dw_dims(dw_desc->dims, dw_desc->dims + dw_desc->num_dims);
+        DW->set_dim(dw_dims).set_output(true);
+
+        // Validate and build the graph
+        auto status = graph->validate();
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->build_operation_graph(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->create_execution_plans({HeurMode_t::A});
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->check_support(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        status = graph->build_plans(handle);
+        if (!status.is_good()) {
+            delete conv_graph;
+            return CONV_FAILURE;
+        }
+
+        conv_graph->graph_ptr = graph;
+        conv_graph->input_tensors.push_back(X);
+        conv_graph->input_tensors.push_back(DY);
+        conv_graph->output_tensors.push_back(DW);
+
+        *graph_out = static_cast<ConvGraph_t>(conv_graph);
+        return CONV_SUCCESS;
+    } catch (const std::exception& e) {
+        return CONV_FAILURE;
+    }
+}
+
+// Get Workspace Size
+ConvError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size) {
+    if (graph == nullptr || workspace_size == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
+    try {
+        int64_t ws_size;
+        auto status = conv_graph->graph_ptr->get_workspace_size(ws_size);
+        if (status.is_good()) {
+            *workspace_size = static_cast<size_t>(ws_size);
+            return CONV_SUCCESS;
+        } else {
+            return CONV_FAILURE;
+        }
+    } catch (const std::exception& e) {
+        return CONV_FAILURE;
+    }
+}
+
+// Execute Graph
+ConvError_t execute_graph(
+    cudnnHandle_t handle,
+    ConvGraph_t graph,
+    void* input_ptrs[],
+    void* output_ptrs[],
+    void* workspace)
+{
+    if (graph == nullptr || input_ptrs == nullptr || output_ptrs == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
+    if (conv_graph->input_tensors.size() == 0 || conv_graph->output_tensors.size() == 0) {
+        return CONV_INVALID_VALUE;
+    }
+    try {
+        std::unordered_map<int64_t, void*> variant_pack;
+        for (size_t i = 0; i < conv_graph->input_tensors.size(); ++i) {
+            if (input_ptrs[i] == nullptr) {
+                return CONV_INVALID_VALUE;
+            }
+            variant_pack[conv_graph->input_tensors[i]->get_uid()] = input_ptrs[i];
+        }
+        for (size_t i = 0; i < conv_graph->output_tensors.size(); ++i) {
+            if (output_ptrs[i] == nullptr) {
+                return CONV_INVALID_VALUE;
+            }
+            variant_pack[conv_graph->output_tensors[i]->get_uid()] = output_ptrs[i];
+        }
+        auto status = conv_graph->graph_ptr->execute(handle, variant_pack, workspace);
+        if (status.is_good()) {
+            return CONV_SUCCESS;
+        } else {
+            return CONV_FAILURE;
+        }
+    } catch (const std::exception& e) {
+        return CONV_FAILURE;
+    }
+}
+
+// Destroy Graph
+void destroy_graph(ConvGraph_t graph) {
+    if (graph != nullptr) {
+        ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
+        delete conv_graph;
+    }
+}
+
+// Get Number of Inputs
+ConvError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs) {
+    if (graph == nullptr || num_inputs == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
+    *num_inputs = conv_graph->input_tensors.size();
+    return CONV_SUCCESS;
+}
+
+// Get Number of Outputs
+ConvError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs) {
+    if (graph == nullptr || num_outputs == nullptr) {
+        return CONV_INVALID_VALUE;
+    }
+    ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
+    *num_outputs = conv_graph->output_tensors.size();
+    return CONV_SUCCESS;
 }
 

@@ -1,30 +1,215 @@
+#include "conv.h"
+#include <cuda_runtime.h>
+#include <cudnn.h>
 #include <iostream>
 #include <vector>
-#include <memory>
-#include <cudnn_frontend.h>
-#include <cuda_runtime.h>
-#include <cuda.h>
-#include <unordered_map>
+#include <string>
 
-#include "conv.h"
+// Include the print_tensor and copy_and_print_tensor functions
+void print_tensor(const float* tensor, int size, const std::string& name);
+void copy_and_print_tensor(float* device_tensor, int size, const std::string& name);
 
-#define CUDNN_CHECK(status)                                                                                     \
-    {                                                                                                           \
-        cudnnStatus_t err = status;                                                                             \
-        if (err != CUDNN_STATUS_SUCCESS) {                                                                      \
-            std::stringstream err_msg;                                                                          \
-            err_msg << "cuDNN Error: " << cudnnGetErrorString(err) << " (" << err << ") at " << __FILE__ << ":" \
-                    << __LINE__;                                                                                \
-            return 1;                                                                                           \
-        }                                                                                                       \
+int main() {
+    cudnnHandle_t handle;
+    cudnnCreate(&handle);
+
+    ConvError_t status;
+
+    // Set tensor descriptors for the forward pass
+    ConvTensorDescriptor_t input_desc = {
+        .num_dims = 4,
+        .dims = {1, 3, 5, 5}, // Example dimensions: N=1, C=3, H=5, W=5
+        .strides = {3 * 5 * 5, 1, 5 * 5, 5}
+    };
+
+    ConvTensorDescriptor_t filter_desc = {
+        .num_dims = 4,
+        .dims = {2, 3, 3, 3}, // K=2 output channels
+        .strides = {3 * 3 * 3, 1, 3 * 3, 3}
+    };
+
+    ConvTensorDescriptor_t output_desc = {
+        .num_dims = 4,
+        .dims = {1, 2, 3, 3},
+        .strides = {2 * 3 * 3, 1, 3 * 3, 3}
+    };
+
+    ConvConvolutionDescriptor_t conv_desc = {
+        .num_dims = 2,
+        .padding = {0, 0},
+        .stride = {1, 1},
+        .dilation = {1, 1}
+    };
+
+    // Build forward propagation graph
+    ConvGraph_t fwd_graph;
+    status = build_fprop_graph(handle, &fwd_graph, &input_desc, &filter_desc, &output_desc, &conv_desc, CONV_DATA_TYPE_FLOAT);
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to build forward propagation graph." << std::endl;
+        return -1;
     }
 
+    // Allocate memory for tensors
+    size_t input_size = 1 * 3 * 5 * 5;
+    size_t filter_size = 2 * 3 * 3 * 3;
+    size_t output_size = 1 * 2 * 3 * 3;
+
+    float* d_input;
+    float* d_filter;
+    float* d_output;
+    cudaMalloc(&d_input, input_size * sizeof(float));
+    cudaMalloc(&d_filter, filter_size * sizeof(float));
+    cudaMalloc(&d_output, output_size * sizeof(float));
+
+    // Initialize input and filter tensors on host
+    std::vector<float> h_input(input_size, 1.0f);   // Initialize all elements to 1.0f
+    std::vector<float> h_filter(filter_size, 1.0f); // Initialize all elements to 1.0f
+
+    // Copy data to device
+    cudaMemcpy(d_input, h_input.data(), input_size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_filter, h_filter.data(), filter_size * sizeof(float), cudaMemcpyHostToDevice);
+
+    // Get workspace size
+    size_t workspace_size;
+    status = get_workspace_size(fwd_graph, &workspace_size);
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to get workspace size for forward graph." << std::endl;
+        destroy_graph(fwd_graph);
+        return -1;
+    }
+
+    void* workspace;
+    cudaMalloc(&workspace, workspace_size);
+
+    // Prepare input and output pointers
+    void* fwd_input_ptrs[2] = {d_input, d_filter};
+    void* fwd_output_ptrs[1] = {d_output};
+
+    // Execute forward graph
+    status = execute_graph(handle, fwd_graph, fwd_input_ptrs, fwd_output_ptrs, workspace);
+    cudaDeviceSynchronize();
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to execute forward graph." << std::endl;
+    }
+
+    // Print input and output tensors
+    copy_and_print_tensor(d_input, input_size, "Input Tensor");
+    copy_and_print_tensor(d_filter, filter_size, "Filter Tensor");
+    copy_and_print_tensor(d_output, output_size, "Output Tensor (Forward)");
+
+    // Clean up forward graph
+    destroy_graph(fwd_graph);
+    cudaFree(workspace);
+
+    // Now perform backward data (data gradient) operation
+    // Build backward data graph
+    ConvGraph_t bwd_data_graph;
+    status = build_dgrad_graph(handle, &bwd_data_graph, &output_desc, &filter_desc, &input_desc, &conv_desc, CONV_DATA_TYPE_FLOAT);
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to build backward data graph." << std::endl;
+        return -1;
+    }
+
+    // Get workspace size
+    status = get_workspace_size(bwd_data_graph, &workspace_size);
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to get workspace size for backward data graph." << std::endl;
+        destroy_graph(bwd_data_graph);
+        return -1;
+    }
+
+    cudaMalloc(&workspace, workspace_size);
+
+    // Allocate memory for gradient input (d_output) and gradient output (d_input_grad)
+    float* d_input_grad;
+    cudaMalloc(&d_input_grad, input_size * sizeof(float));
+
+    // For simplicity, let's assume d_output is filled with ones
+    cudaMemset(d_output, 0, output_size * sizeof(float));
+    cudaMemset(d_input_grad, 0, input_size * sizeof(float));
+    cudaMemcpy(d_output, h_input.data(), output_size * sizeof(float), cudaMemcpyHostToDevice); // Using h_input as dummy data
+
+    // Prepare input and output pointers
+    void* bwd_data_input_ptrs[2] = {d_output, d_filter}; // dY and W
+    void* bwd_data_output_ptrs[1] = {d_input_grad};      // dX
+
+    // Execute backward data graph
+    status = execute_graph(handle, bwd_data_graph, bwd_data_input_ptrs, bwd_data_output_ptrs, workspace);
+    cudaDeviceSynchronize();
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to execute backward data graph." << std::endl;
+    }
+
+    // Print input gradients
+    copy_and_print_tensor(d_input_grad, input_size, "Input Tensor Gradient (Backward Data)");
+
+    // Clean up backward data graph
+    destroy_graph(bwd_data_graph);
+    cudaFree(workspace);
+
+    // Now perform backward filter (weight gradient) operation
+    // Build backward filter graph
+    ConvGraph_t bwd_filter_graph;
+    status = build_wgrad_graph(handle, &bwd_filter_graph, &input_desc, &output_desc, &filter_desc, &conv_desc, CONV_DATA_TYPE_FLOAT);
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to build backward filter graph." << std::endl;
+        return -1;
+    }
+
+    // Get workspace size
+    status = get_workspace_size(bwd_filter_graph, &workspace_size);
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to get workspace size for backward filter graph." << std::endl;
+        destroy_graph(bwd_filter_graph);
+        return -1;
+    }
+
+    cudaMalloc(&workspace, workspace_size);
+
+    // Allocate memory for gradient output (d_filter_grad)
+    float* d_filter_grad;
+    cudaMalloc(&d_filter_grad, filter_size * sizeof(float));
+
+    // Prepare input and output pointers
+    void* bwd_filter_input_ptrs[2] = {d_input, d_output}; // X and dY
+    void* bwd_filter_output_ptrs[1] = {d_filter_grad};    // dW
+
+    // Execute backward filter graph
+    status = execute_graph(handle, bwd_filter_graph, bwd_filter_input_ptrs, bwd_filter_output_ptrs, workspace);
+    cudaDeviceSynchronize();
+    if (status != CONV_SUCCESS) {
+        std::cerr << "Failed to execute backward filter graph." << std::endl;
+    }
+
+    // Print filter gradients
+    copy_and_print_tensor(d_filter_grad, filter_size, "Filter Tensor Gradient (Backward Filter)");
+
+    // Clean up backward filter graph
+    destroy_graph(bwd_filter_graph);
+    cudaFree(workspace);
+
+    // Free device memory
+    cudaFree(d_input);
+    cudaFree(d_filter);
+    cudaFree(d_output);
+    cudaFree(d_input_grad);
+    cudaFree(d_filter_grad);
+
+    cudnnDestroy(handle);
+
+    return 0;
+}
+
+// Include the definitions of print_tensor and copy_and_print_tensor
 void print_tensor(const float* tensor, int size, const std::string& name) {
-    std::cout << name << ": ";
+    std::cout << name << ": [";
     for (int i = 0; i < size; ++i) {
-        std::cout << tensor[i] << " ";
+        std::cout << tensor[i];
+        if (i < size - 1) {
+            std::cout << ", ";
+        }
     }
-    std::cout << std::endl;
+    std::cout << "]" << std::endl;
 }
 
 void copy_and_print_tensor(float* device_tensor, int size, const std::string& name) {
@@ -33,93 +218,3 @@ void copy_and_print_tensor(float* device_tensor, int size, const std::string& na
     print_tensor(host_tensor.data(), size, name);
 }
 
-int main() {
-    cudnnHandle_t handle;
-    CUDNN_CHECK(cudnnCreate(&handle));
-
-    std::vector<long int> input_dim = {4, 64, 16};
-    std::vector<long int> weight_dim = {64, 32, 3};
-    std::vector<long int> output_dim = {4, 32, 16};
-    std::vector<long int> input_stride = {64 * 16, 1, 64};
-    std::vector<long int> weight_stride = {32 * 3, 1, 32};
-    std::vector<long int> output_stride = {32 * 16, 1, 32};
-    std::vector<long int> padding = {1};
-    std::vector<long int> stride = {1};
-    std::vector<long int> dilation = {1};
-
-    Shape input_shape = {input_dim.data(), input_stride.data(), 3};
-    Shape weight_shape = {weight_dim.data(), weight_stride.data(), 3};
-    Shape output_shape = {output_dim.data(), output_stride.data(), 3};
-    ConvParams conv_params = {padding.data(), stride.data(), dilation.data(), 1};
-
-    auto forward_components = create_forward_graph(handle, &input_shape, &weight_shape, &output_shape, &conv_params);
-    auto backward_filter_components = create_backward_filter_graph(handle, &input_shape, &weight_shape, &output_shape, &conv_params);
-    auto backward_data_components = create_backward_data_graph(handle, &input_shape, &weight_shape, &output_shape, &conv_params);
-
-    float* y_tensor = nullptr;
-    cudaMalloc(&y_tensor, 4 * 64 * 16 * sizeof(float));
-    float* dy_tensor = nullptr;
-    cudaMalloc(&dy_tensor, 4 * 64 * 16 * sizeof(float));
-    float* w_tensor = nullptr;
-    cudaMalloc(&w_tensor, 64 * 32 * 3 * sizeof(float));
-    float* dw_tensor = nullptr;
-    cudaMalloc(&dw_tensor, 64 * 32 * 3 * sizeof(float));
-    float* x_tensor = nullptr;
-    cudaMalloc(&x_tensor, 4 * 32 * 16 * sizeof(float));
-    float* dx_tensor = nullptr;
-    cudaMalloc(&dx_tensor, 4 * 32 * 16 * sizeof(float));
-
-    std::vector<float> y_init(4 * 64 * 16, 1.0f);
-    std::vector<float> dy_init(4 * 64 * 16, 1.0f);
-    std::vector<float> w_init(64 * 32 * 3, 2.0f);
-    std::vector<float> dw_init(64 * 32 * 3, 0.0f);
-    std::vector<float> x_init(4 * 32 * 16, 0.0f);
-    std::vector<float> dx_init(4 * 32 * 16, 0.0f);
-
-    cudaMemcpy(y_tensor, y_init.data(), y_init.size() * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dy_tensor, dy_init.data(), dy_init.size() * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(w_tensor, w_init.data(), w_init.size() * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dw_tensor, dw_init.data(), dw_init.size() * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(x_tensor, x_init.data(), x_init.size() * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(dx_tensor, dx_init.data(), dx_init.size() * sizeof(float), cudaMemcpyHostToDevice);
-
-    copy_and_print_tensor(y_tensor, 4 * 64 * 16, "Y");
-    copy_and_print_tensor(dy_tensor, 4 * 64 * 16, "DY");
-    copy_and_print_tensor(w_tensor, 64 * 32 * 3, "W");
-    copy_and_print_tensor(dw_tensor, 64 * 32 * 3, "DW");
-    copy_and_print_tensor(x_tensor, 4 * 32 * 16, "X");
-    copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX");
-
-    // Execute Forward
-    if (execute_graph(handle, forward_components, dy_tensor, w_tensor, y_tensor)) {
-        copy_and_print_tensor(y_tensor, 4 * 32 * 16, "Y (after forward)");
-    }
-
-    // Execute Backward Filter
-    if (execute_graph(handle, backward_filter_components, dy_tensor, x_tensor, dw_tensor)) {
-        copy_and_print_tensor(dw_tensor, 64 * 32 * 3, "DW (after backward filter)");
-    }
-
-    // Execute Backward Data
-    if (execute_graph(handle, backward_data_components, dy_tensor, w_tensor, dx_tensor)) {
-        copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX (after backward data)");
-    }
-
-    // print results
-    copy_and_print_tensor(y_tensor, 4 * 64 * 16, "Y");
-    copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX");
-    copy_and_print_tensor(dw_tensor, 64 * 32 * 3, "DW");
-
-
-    cudnnDestroy(handle);
-    destroy_graph_components(forward_components);
-    destroy_graph_components(backward_filter_components);
-    destroy_graph_components(backward_data_components);
-    cudaFree(y_tensor);
-    cudaFree(dy_tensor);
-    cudaFree(w_tensor);
-    cudaFree(dw_tensor);
-    cudaFree(x_tensor);
-    cudaFree(dx_tensor);
-    return 0;
-}
