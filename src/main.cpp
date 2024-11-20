@@ -46,35 +46,80 @@ int main() {
     std::vector<long int> padding = {1};
     std::vector<long int> stride = {1};
     std::vector<long int> dilation = {1};
-    auto input_shape = Shape{.dim = input_dim.data(), .stride = input_stride.data(), .size = 3};
-    auto weight_shape = Shape{.dim = weight_dim.data(), .stride = weight_stride.data(), .size = 3};
-    auto output_shape = Shape{.dim = output_dim.data(), .stride = output_stride.data(), .size = 3};
-    auto conv_params = ConvParams{.padding = padding.data(), .stride = stride.data(), .dilation = dilation.data(), .size = 1};
-    auto components = create_graph(&input_shape, &weight_shape, &output_shape, &conv_params);
 
+    Shape input_shape = {input_dim.data(), input_stride.data(), 3};
+    Shape weight_shape = {weight_dim.data(), weight_stride.data(), 3};
+    Shape output_shape = {output_dim.data(), output_stride.data(), 3};
+    ConvParams conv_params = {padding.data(), stride.data(), dilation.data(), 1};
+
+    auto forward_components = create_forward_graph(handle, &input_shape, &weight_shape, &output_shape, &conv_params);
+    auto backward_filter_components = create_backward_filter_graph(handle, &input_shape, &weight_shape, &output_shape, &conv_params);
+    auto backward_data_components = create_backward_data_graph(handle, &input_shape, &weight_shape, &output_shape, &conv_params);
+
+    float* y_tensor = nullptr;
+    cudaMalloc(&y_tensor, 4 * 64 * 16 * sizeof(float));
     float* dy_tensor = nullptr;
     cudaMalloc(&dy_tensor, 4 * 64 * 16 * sizeof(float));
     float* w_tensor = nullptr;
     cudaMalloc(&w_tensor, 64 * 32 * 3 * sizeof(float));
+    float* dw_tensor = nullptr;
+    cudaMalloc(&dw_tensor, 64 * 32 * 3 * sizeof(float));
+    float* x_tensor = nullptr;
+    cudaMalloc(&x_tensor, 4 * 32 * 16 * sizeof(float));
     float* dx_tensor = nullptr;
     cudaMalloc(&dx_tensor, 4 * 32 * 16 * sizeof(float));
 
+    std::vector<float> y_init(4 * 64 * 16, 1.0f);
     std::vector<float> dy_init(4 * 64 * 16, 1.0f);
     std::vector<float> w_init(64 * 32 * 3, 2.0f);
+    std::vector<float> dw_init(64 * 32 * 3, 0.0f);
+    std::vector<float> x_init(4 * 32 * 16, 0.0f);
     std::vector<float> dx_init(4 * 32 * 16, 0.0f);
+
+    cudaMemcpy(y_tensor, y_init.data(), y_init.size() * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(dy_tensor, dy_init.data(), dy_init.size() * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(w_tensor, w_init.data(), w_init.size() * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(dw_tensor, dw_init.data(), dw_init.size() * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(x_tensor, x_init.data(), x_init.size() * sizeof(float), cudaMemcpyHostToDevice);
     cudaMemcpy(dx_tensor, dx_init.data(), dx_init.size() * sizeof(float), cudaMemcpyHostToDevice);
 
+    copy_and_print_tensor(y_tensor, 4 * 64 * 16, "Y");
     copy_and_print_tensor(dy_tensor, 4 * 64 * 16, "DY");
     copy_and_print_tensor(w_tensor, 64 * 32 * 3, "W");
+    copy_and_print_tensor(dw_tensor, 64 * 32 * 3, "DW");
+    copy_and_print_tensor(x_tensor, 4 * 32 * 16, "X");
     copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX");
 
-    if (execute_graph(handle, components, dy_tensor, w_tensor, dx_tensor)) {
-        copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX (after computation)");
+    // Execute Forward
+    if (execute_graph(handle, forward_components, dy_tensor, w_tensor, y_tensor)) {
+        copy_and_print_tensor(y_tensor, 4 * 32 * 16, "Y (after forward)");
     }
 
+    // Execute Backward Filter
+    if (execute_graph(handle, backward_filter_components, dy_tensor, x_tensor, dw_tensor)) {
+        copy_and_print_tensor(dw_tensor, 64 * 32 * 3, "DW (after backward filter)");
+    }
+
+    // Execute Backward Data
+    if (execute_graph(handle, backward_data_components, dy_tensor, w_tensor, dx_tensor)) {
+        copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX (after backward data)");
+    }
+
+    // print results
+    copy_and_print_tensor(y_tensor, 4 * 64 * 16, "Y");
+    copy_and_print_tensor(dx_tensor, 4 * 32 * 16, "DX");
+    copy_and_print_tensor(dw_tensor, 64 * 32 * 3, "DW");
+
+
     cudnnDestroy(handle);
-    destroy_graph_components(components);
+    destroy_graph_components(forward_components);
+    destroy_graph_components(backward_filter_components);
+    destroy_graph_components(backward_data_components);
+    cudaFree(y_tensor);
+    cudaFree(dy_tensor);
+    cudaFree(w_tensor);
+    cudaFree(dw_tensor);
+    cudaFree(x_tensor);
+    cudaFree(dx_tensor);
     return 0;
 }
