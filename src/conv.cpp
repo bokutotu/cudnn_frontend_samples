@@ -11,7 +11,7 @@ struct ConvGraph {
 };
 
 // Function to map custom ConvDataType_t to cudnn_frontend::DataType_t
-static cudnn_frontend::DataType_t getCudnnDataType(ConvDataType_t data_type) {
+static cudnn_frontend::DataType_t getCudnnDataType(CudnnFrontendDataType_t data_type) {
     using namespace cudnn_frontend;
     switch (data_type) {
         case CONV_DATA_TYPE_HALF:
@@ -27,14 +27,14 @@ static cudnn_frontend::DataType_t getCudnnDataType(ConvDataType_t data_type) {
 }
 
 // Build Forward Propagation Graph
-ConvError_t build_fprop_graph(
+CudnnFrontendError_t build_fprop_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
     const ConvTensorDescriptor_t* input_desc,
     const ConvTensorDescriptor_t* filter_desc,
     const ConvTensorDescriptor_t* output_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
-    ConvDataType_t data_type)
+    CudnnFrontendDataType_t data_type)
 {
     if (graph_out == nullptr || input_desc == nullptr || filter_desc == nullptr ||
         output_desc == nullptr || conv_desc == nullptr) {
@@ -124,14 +124,14 @@ ConvError_t build_fprop_graph(
 }
 
 // Build Data Gradient Graph
-ConvError_t build_dgrad_graph(
+CudnnFrontendError_t build_dgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
     const ConvTensorDescriptor_t* dy_desc,
     const ConvTensorDescriptor_t* w_desc,
     const ConvTensorDescriptor_t* dx_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
-    ConvDataType_t data_type)
+    CudnnFrontendDataType_t data_type)
 {
     if (graph_out == nullptr || dy_desc == nullptr || w_desc == nullptr ||
         dx_desc == nullptr || conv_desc == nullptr) {
@@ -223,14 +223,14 @@ ConvError_t build_dgrad_graph(
 }
 
 // Build Weight Gradient Graph
-ConvError_t build_wgrad_graph(
+CudnnFrontendError_t build_wgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
     const ConvTensorDescriptor_t* x_desc,
     const ConvTensorDescriptor_t* dy_desc,
     const ConvTensorDescriptor_t* dw_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
-    ConvDataType_t data_type)
+    CudnnFrontendDataType_t data_type)
 {
     if (graph_out == nullptr || x_desc == nullptr || dy_desc == nullptr ||
         dw_desc == nullptr || conv_desc == nullptr) {
@@ -322,7 +322,7 @@ ConvError_t build_wgrad_graph(
 }
 
 // Get Workspace Size
-ConvError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size) {
+CudnnFrontendError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size) {
     if (graph == nullptr || workspace_size == nullptr) {
         return CONV_INVALID_VALUE;
     }
@@ -342,7 +342,7 @@ ConvError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size) {
 }
 
 // Execute Graph
-ConvError_t execute_graph(
+CudnnFrontendError_t execute_graph(
     cudnnHandle_t handle,
     ConvGraph_t graph,
     void* input_ptrs[],
@@ -390,7 +390,7 @@ void destroy_graph(ConvGraph_t graph) {
 }
 
 // Get Number of Inputs
-ConvError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs) {
+CudnnFrontendError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs) {
     if (graph == nullptr || num_inputs == nullptr) {
         return CONV_INVALID_VALUE;
     }
@@ -400,7 +400,7 @@ ConvError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs) {
 }
 
 // Get Number of Outputs
-ConvError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs) {
+CudnnFrontendError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs) {
     if (graph == nullptr || num_outputs == nullptr) {
         return CONV_INVALID_VALUE;
     }

@@ -13,7 +13,7 @@ int main() {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
-    ConvError_t status;
+    CudnnFrontendError_t status;
 
     // Set tensor descriptors for the forward pass
     ConvTensorDescriptor_t input_desc = {

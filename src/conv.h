@@ -16,14 +16,14 @@ typedef enum {
     CONV_INVALID_VALUE = 2,
     CONV_NOT_SUPPORTED = 3,
     // Add more error codes as needed
-} ConvError_t;
+} CudnnFrontendError_t;
 
 typedef enum {
     CONV_DATA_TYPE_HALF,
     CONV_DATA_TYPE_FLOAT,
     CONV_DATA_TYPE_DOUBLE,
     // Add more as needed
-} ConvDataType_t;
+} CudnnFrontendDataType_t;
 
 typedef struct {
     size_t num_dims;
@@ -39,38 +39,38 @@ typedef struct {
 } ConvConvolutionDescriptor_t;
 
 // Build graphs
-ConvError_t build_fprop_graph(
+CudnnFrontendError_t build_fprop_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
     const ConvTensorDescriptor_t* input_desc,
     const ConvTensorDescriptor_t* filter_desc,
     const ConvTensorDescriptor_t* output_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
-    ConvDataType_t data_type);
+    CudnnFrontendDataType_t data_type);
 
-ConvError_t build_dgrad_graph(
+CudnnFrontendError_t build_dgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
     const ConvTensorDescriptor_t* dy_desc,
     const ConvTensorDescriptor_t* w_desc,
     const ConvTensorDescriptor_t* dx_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
-    ConvDataType_t data_type);
+    CudnnFrontendDataType_t data_type);
 
-ConvError_t build_wgrad_graph(
+CudnnFrontendError_t build_wgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
     const ConvTensorDescriptor_t* x_desc,
     const ConvTensorDescriptor_t* dy_desc,
     const ConvTensorDescriptor_t* dw_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
-    ConvDataType_t data_type);
+    CudnnFrontendDataType_t data_type);
 
 // Get workspace size
-ConvError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size);
+CudnnFrontendError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size);
 
 // Execute graph
-ConvError_t execute_graph(
+CudnnFrontendError_t execute_graph(
     cudnnHandle_t handle,
     ConvGraph_t graph,
     void* input_ptrs[],
@@ -81,8 +81,8 @@ ConvError_t execute_graph(
 void destroy_graph(ConvGraph_t graph);
 
 // Get number of inputs and outputs
-ConvError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs);
-ConvError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs);
+CudnnFrontendError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs);
+CudnnFrontendError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs);
 
 #ifdef __cplusplus
 }
