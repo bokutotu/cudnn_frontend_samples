@@ -27,7 +27,7 @@ target_precompile_headers(_cudnn_frontend_pch INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/cudnn-frontend/include/cudnn_frontend.h
 )
 
-add_executable(cudnn_frontend_example src/main.cpp src/conv.cpp)
+add_executable(cudnn_frontend_example src/main.cpp src/conv.cpp src/batch_norm.cpp)
 
 target_link_libraries(cudnn_frontend_example PRIVATE cudnn_frontend _cudnn_frontend_pch CUDNN::cudnn_all)
 target_include_directories(cudnn_frontend_example PRIVATE 

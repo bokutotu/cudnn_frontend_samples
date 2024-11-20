@@ -1,4 +1,5 @@
-#include "conv.h"
+// #include "conv.h"
+#include "cudnn_frontend_wrapper.h"
 #include <cuda_runtime.h>
 #include <cudnn.h>
 #include <iostream>
@@ -15,20 +16,19 @@ int main() {
 
     CudnnFrontendError_t status;
 
-    // Set tensor descriptors for the forward pass
-    ConvTensorDescriptor_t input_desc = {
+    CudnnTensorDescriptor_t input_desc = {
         .num_dims = 4,
         .dims = {1, 3, 5, 5}, // Example dimensions: N=1, C=3, H=5, W=5
         .strides = {3 * 5 * 5, 1, 5 * 5, 5}
     };
 
-    ConvTensorDescriptor_t filter_desc = {
+    CudnnTensorDescriptor_t filter_desc = {
         .num_dims = 4,
         .dims = {2, 3, 3, 3}, // K=2 output channels
         .strides = {3 * 3 * 3, 1, 3 * 3, 3}
     };
 
-    ConvTensorDescriptor_t output_desc = {
+    CudnnTensorDescriptor_t output_desc = {
         .num_dims = 4,
         .dims = {1, 2, 3, 3},
         .strides = {2 * 3 * 3, 1, 3 * 3, 3}
@@ -43,8 +43,8 @@ int main() {
 
     // Build forward propagation graph
     ConvGraph_t fwd_graph;
-    status = build_fprop_graph(handle, &fwd_graph, &input_desc, &filter_desc, &output_desc, &conv_desc, CONV_DATA_TYPE_FLOAT);
-    if (status != CONV_SUCCESS) {
+    status = build_fprop_graph(handle, &fwd_graph, &input_desc, &filter_desc, &output_desc, &conv_desc, DATA_TYPE_FLOAT);
+    if (status != SUCCESS) {
         std::cerr << "Failed to build forward propagation graph." << std::endl;
         return -1;
     }
@@ -72,7 +72,7 @@ int main() {
     // Get workspace size
     size_t workspace_size;
     status = get_workspace_size(fwd_graph, &workspace_size);
-    if (status != CONV_SUCCESS) {
+    if (status != SUCCESS) {
         std::cerr << "Failed to get workspace size for forward graph." << std::endl;
         destroy_graph(fwd_graph);
         return -1;
@@ -88,7 +88,7 @@ int main() {
     // Execute forward graph
     status = execute_graph(handle, fwd_graph, fwd_input_ptrs, fwd_output_ptrs, workspace);
     cudaDeviceSynchronize();
-    if (status != CONV_SUCCESS) {
+    if (status != SUCCESS) {
         std::cerr << "Failed to execute forward graph." << std::endl;
     }
 
@@ -104,15 +104,15 @@ int main() {
     // Now perform backward data (data gradient) operation
     // Build backward data graph
     ConvGraph_t bwd_data_graph;
-    status = build_dgrad_graph(handle, &bwd_data_graph, &output_desc, &filter_desc, &input_desc, &conv_desc, CONV_DATA_TYPE_FLOAT);
-    if (status != CONV_SUCCESS) {
+    status = build_dgrad_graph(handle, &bwd_data_graph, &output_desc, &filter_desc, &input_desc, &conv_desc, DATA_TYPE_FLOAT);
+    if (status != SUCCESS) {
         std::cerr << "Failed to build backward data graph." << std::endl;
         return -1;
     }
 
     // Get workspace size
     status = get_workspace_size(bwd_data_graph, &workspace_size);
-    if (status != CONV_SUCCESS) {
+    if (status != SUCCESS) {
         std::cerr << "Failed to get workspace size for backward data graph." << std::endl;
         destroy_graph(bwd_data_graph);
         return -1;
@@ -136,7 +136,7 @@ int main() {
     // Execute backward data graph
     status = execute_graph(handle, bwd_data_graph, bwd_data_input_ptrs, bwd_data_output_ptrs, workspace);
     cudaDeviceSynchronize();
-    if (status != CONV_SUCCESS) {
+    if (status != SUCCESS) {
         std::cerr << "Failed to execute backward data graph." << std::endl;
     }
 
@@ -150,15 +150,15 @@ int main() {
     // Now perform backward filter (weight gradient) operation
     // Build backward filter graph
     ConvGraph_t bwd_filter_graph;
-    status = build_wgrad_graph(handle, &bwd_filter_graph, &input_desc, &output_desc, &filter_desc, &conv_desc, CONV_DATA_TYPE_FLOAT);
-    if (status != CONV_SUCCESS) {
+    status = build_wgrad_graph(handle, &bwd_filter_graph, &input_desc, &output_desc, &filter_desc, &conv_desc, DATA_TYPE_FLOAT);
+    if (status != SUCCESS) {
         std::cerr << "Failed to build backward filter graph." << std::endl;
         return -1;
     }
 
     // Get workspace size
     status = get_workspace_size(bwd_filter_graph, &workspace_size);
-    if (status != CONV_SUCCESS) {
+    if (status != SUCCESS) {
         std::cerr << "Failed to get workspace size for backward filter graph." << std::endl;
         destroy_graph(bwd_filter_graph);
         return -1;
@@ -177,7 +177,7 @@ int main() {
     // Execute backward filter graph
     status = execute_graph(handle, bwd_filter_graph, bwd_filter_input_ptrs, bwd_filter_output_ptrs, workspace);
     cudaDeviceSynchronize();
-    if (status != CONV_SUCCESS) {
+    if (status != SUCCESS) {
         std::cerr << "Failed to execute backward filter graph." << std::endl;
     }
 

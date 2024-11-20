@@ -1,4 +1,6 @@
 #include "conv.h"
+#include "utils.h"
+
 #include <cudnn_frontend.h>
 #include <memory>
 #include <vector>
@@ -10,35 +12,19 @@ struct ConvGraph {
     std::vector<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>> output_tensors;
 };
 
-// Function to map custom ConvDataType_t to cudnn_frontend::DataType_t
-static cudnn_frontend::DataType_t getCudnnDataType(CudnnFrontendDataType_t data_type) {
-    using namespace cudnn_frontend;
-    switch (data_type) {
-        case CONV_DATA_TYPE_HALF:
-            return DataType_t::HALF;
-        case CONV_DATA_TYPE_FLOAT:
-            return DataType_t::FLOAT;
-        case CONV_DATA_TYPE_DOUBLE:
-            return DataType_t::DOUBLE;
-        // Add more cases as needed
-        default:
-            return DataType_t::FLOAT; // Default to float
-    }
-}
-
 // Build Forward Propagation Graph
 CudnnFrontendError_t build_fprop_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
-    const ConvTensorDescriptor_t* input_desc,
-    const ConvTensorDescriptor_t* filter_desc,
-    const ConvTensorDescriptor_t* output_desc,
+    const CudnnTensorDescriptor_t* input_desc,
+    const CudnnTensorDescriptor_t* filter_desc,
+    const CudnnTensorDescriptor_t* output_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
     CudnnFrontendDataType_t data_type)
 {
     if (graph_out == nullptr || input_desc == nullptr || filter_desc == nullptr ||
         output_desc == nullptr || conv_desc == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     try {
         using namespace cudnn_frontend;
@@ -84,31 +70,31 @@ CudnnFrontendError_t build_fprop_graph(
         auto status = graph->validate();
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->build_operation_graph(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->create_execution_plans({HeurMode_t::A});
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->check_support(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->build_plans(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         conv_graph->graph_ptr = graph;
@@ -117,9 +103,9 @@ CudnnFrontendError_t build_fprop_graph(
         conv_graph->output_tensors.push_back(Y);
 
         *graph_out = static_cast<ConvGraph_t>(conv_graph);
-        return CONV_SUCCESS;
+        return SUCCESS;
     } catch (const std::exception& e) {
-        return CONV_FAILURE;
+        return FAILURE;
     }
 }
 
@@ -127,15 +113,15 @@ CudnnFrontendError_t build_fprop_graph(
 CudnnFrontendError_t build_dgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
-    const ConvTensorDescriptor_t* dy_desc,
-    const ConvTensorDescriptor_t* w_desc,
-    const ConvTensorDescriptor_t* dx_desc,
+    const CudnnTensorDescriptor_t* dy_desc,
+    const CudnnTensorDescriptor_t* w_desc,
+    const CudnnTensorDescriptor_t* dx_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
     CudnnFrontendDataType_t data_type)
 {
     if (graph_out == nullptr || dy_desc == nullptr || w_desc == nullptr ||
         dx_desc == nullptr || conv_desc == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     try {
         using namespace cudnn_frontend;
@@ -183,31 +169,31 @@ CudnnFrontendError_t build_dgrad_graph(
         auto status = graph->validate();
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->build_operation_graph(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->create_execution_plans({HeurMode_t::A});
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->check_support(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->build_plans(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         conv_graph->graph_ptr = graph;
@@ -216,9 +202,9 @@ CudnnFrontendError_t build_dgrad_graph(
         conv_graph->output_tensors.push_back(DX);
 
         *graph_out = static_cast<ConvGraph_t>(conv_graph);
-        return CONV_SUCCESS;
+        return SUCCESS;
     } catch (const std::exception& e) {
-        return CONV_FAILURE;
+        return FAILURE;
     }
 }
 
@@ -226,15 +212,15 @@ CudnnFrontendError_t build_dgrad_graph(
 CudnnFrontendError_t build_wgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
-    const ConvTensorDescriptor_t* x_desc,
-    const ConvTensorDescriptor_t* dy_desc,
-    const ConvTensorDescriptor_t* dw_desc,
+    const CudnnTensorDescriptor_t* x_desc,
+    const CudnnTensorDescriptor_t* dy_desc,
+    const CudnnTensorDescriptor_t* dw_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
     CudnnFrontendDataType_t data_type)
 {
     if (graph_out == nullptr || x_desc == nullptr || dy_desc == nullptr ||
         dw_desc == nullptr || conv_desc == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     try {
         using namespace cudnn_frontend;
@@ -282,31 +268,31 @@ CudnnFrontendError_t build_wgrad_graph(
         auto status = graph->validate();
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->build_operation_graph(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->create_execution_plans({HeurMode_t::A});
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->check_support(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         status = graph->build_plans(handle);
         if (!status.is_good()) {
             delete conv_graph;
-            return CONV_FAILURE;
+            return FAILURE;
         }
 
         conv_graph->graph_ptr = graph;
@@ -315,16 +301,16 @@ CudnnFrontendError_t build_wgrad_graph(
         conv_graph->output_tensors.push_back(DW);
 
         *graph_out = static_cast<ConvGraph_t>(conv_graph);
-        return CONV_SUCCESS;
+        return SUCCESS;
     } catch (const std::exception& e) {
-        return CONV_FAILURE;
+        return FAILURE;
     }
 }
 
 // Get Workspace Size
 CudnnFrontendError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_size) {
     if (graph == nullptr || workspace_size == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
     try {
@@ -332,12 +318,12 @@ CudnnFrontendError_t get_workspace_size(ConvGraph_t graph, size_t* workspace_siz
         auto status = conv_graph->graph_ptr->get_workspace_size(ws_size);
         if (status.is_good()) {
             *workspace_size = static_cast<size_t>(ws_size);
-            return CONV_SUCCESS;
+            return SUCCESS;
         } else {
-            return CONV_FAILURE;
+            return FAILURE;
         }
     } catch (const std::exception& e) {
-        return CONV_FAILURE;
+        return FAILURE;
     }
 }
 
@@ -350,34 +336,34 @@ CudnnFrontendError_t execute_graph(
     void* workspace)
 {
     if (graph == nullptr || input_ptrs == nullptr || output_ptrs == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
     if (conv_graph->input_tensors.size() == 0 || conv_graph->output_tensors.size() == 0) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     try {
         std::unordered_map<int64_t, void*> variant_pack;
         for (size_t i = 0; i < conv_graph->input_tensors.size(); ++i) {
             if (input_ptrs[i] == nullptr) {
-                return CONV_INVALID_VALUE;
+                return INVALID_VALUE;
             }
             variant_pack[conv_graph->input_tensors[i]->get_uid()] = input_ptrs[i];
         }
         for (size_t i = 0; i < conv_graph->output_tensors.size(); ++i) {
             if (output_ptrs[i] == nullptr) {
-                return CONV_INVALID_VALUE;
+                return INVALID_VALUE;
             }
             variant_pack[conv_graph->output_tensors[i]->get_uid()] = output_ptrs[i];
         }
         auto status = conv_graph->graph_ptr->execute(handle, variant_pack, workspace);
         if (status.is_good()) {
-            return CONV_SUCCESS;
+            return SUCCESS;
         } else {
-            return CONV_FAILURE;
+            return FAILURE;
         }
     } catch (const std::exception& e) {
-        return CONV_FAILURE;
+        return FAILURE;
     }
 }
 
@@ -392,20 +378,20 @@ void destroy_graph(ConvGraph_t graph) {
 // Get Number of Inputs
 CudnnFrontendError_t get_num_inputs(ConvGraph_t graph, size_t* num_inputs) {
     if (graph == nullptr || num_inputs == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
     *num_inputs = conv_graph->input_tensors.size();
-    return CONV_SUCCESS;
+    return SUCCESS;
 }
 
 // Get Number of Outputs
 CudnnFrontendError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs) {
     if (graph == nullptr || num_outputs == nullptr) {
-        return CONV_INVALID_VALUE;
+        return INVALID_VALUE;
     }
     ConvGraph* conv_graph = static_cast<ConvGraph*>(graph);
     *num_outputs = conv_graph->output_tensors.size();
-    return CONV_SUCCESS;
+    return SUCCESS;
 }
 

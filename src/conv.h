@@ -7,30 +7,9 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <cudnn.h>
+#include "cudnn_frontend_wrapper.h"
 
 typedef void* ConvGraph_t;
-
-typedef enum {
-    CONV_SUCCESS = 0,
-    CONV_FAILURE = 1,
-    CONV_INVALID_VALUE = 2,
-    CONV_NOT_SUPPORTED = 3,
-    // Add more error codes as needed
-} CudnnFrontendError_t;
-
-typedef enum {
-    CONV_DATA_TYPE_HALF,
-    CONV_DATA_TYPE_FLOAT,
-    CONV_DATA_TYPE_DOUBLE,
-    // Add more as needed
-} CudnnFrontendDataType_t;
-
-typedef struct {
-    size_t num_dims;
-    int64_t dims[8];    // Maximum of 8 dimensions
-    int64_t strides[8]; // Corresponding strides
-} ConvTensorDescriptor_t;
-
 typedef struct {
     size_t num_dims;
     int64_t padding[8];   // Padding for each spatial dimension
@@ -42,27 +21,27 @@ typedef struct {
 CudnnFrontendError_t build_fprop_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
-    const ConvTensorDescriptor_t* input_desc,
-    const ConvTensorDescriptor_t* filter_desc,
-    const ConvTensorDescriptor_t* output_desc,
+    const CudnnTensorDescriptor_t* input_desc,
+    const CudnnTensorDescriptor_t* filter_desc,
+    const CudnnTensorDescriptor_t* output_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
     CudnnFrontendDataType_t data_type);
 
 CudnnFrontendError_t build_dgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
-    const ConvTensorDescriptor_t* dy_desc,
-    const ConvTensorDescriptor_t* w_desc,
-    const ConvTensorDescriptor_t* dx_desc,
+    const CudnnTensorDescriptor_t* dy_desc,
+    const CudnnTensorDescriptor_t* w_desc,
+    const CudnnTensorDescriptor_t* dx_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
     CudnnFrontendDataType_t data_type);
 
 CudnnFrontendError_t build_wgrad_graph(
     cudnnHandle_t handle,
     ConvGraph_t* graph_out,
-    const ConvTensorDescriptor_t* x_desc,
-    const ConvTensorDescriptor_t* dy_desc,
-    const ConvTensorDescriptor_t* dw_desc,
+    const CudnnTensorDescriptor_t* x_desc,
+    const CudnnTensorDescriptor_t* dy_desc,
+    const CudnnTensorDescriptor_t* dw_desc,
     const ConvConvolutionDescriptor_t* conv_desc,
     CudnnFrontendDataType_t data_type);
 
