@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.17)
+set(CMAKE_CXX_STANDARD 20)
 project(cudnn_frontend_example LANGUAGES CXX CUDA)
 
 include(${PROJECT_SOURCE_DIR}/cuDNN.cmake)
@@ -26,7 +27,7 @@ target_precompile_headers(_cudnn_frontend_pch INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/cudnn-frontend/include/cudnn_frontend.h
 )
 
-add_executable(cudnn_frontend_example src/main.cpp)
+add_executable(cudnn_frontend_example src/main.cpp src/conv.cpp)
 
 target_link_libraries(cudnn_frontend_example PRIVATE cudnn_frontend _cudnn_frontend_pch CUDNN::cudnn_all)
 target_include_directories(cudnn_frontend_example PRIVATE 
