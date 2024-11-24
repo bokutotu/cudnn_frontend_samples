@@ -5,6 +5,22 @@
 #include <vector>
 #include <unordered_map>
 
+// struct BNGraph {
+//     std::shared_ptr<cudnn_frontend::graph::Graph> graph_ptr;
+//     std::vector<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>> input_tensors;
+//     std::vector<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>> output_tensors;
+//     float epsilon;
+//     float momentum;
+//     int mode;  // 0: inference, 1: training
+// };
+static std::vector<int64_t> vector_from_array(const int64_t* array, size_t size) {
+    return std::vector<int64_t>(array, array + size);
+}
+
+// extern "C" {
+
+
+
 struct BNGraph {
     std::shared_ptr<cudnn_frontend::graph::Graph> graph_ptr;
     std::vector<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>> input_tensors;
@@ -13,9 +29,9 @@ struct BNGraph {
     float momentum;
     int mode;  // 0: inference, 1: training
 };
-static std::vector<int64_t> vector_from_array(const int64_t* array, size_t size) {
-    return std::vector<int64_t>(array, array + size);
-}
+// static std::vector<int64_t> vector_from_array(const int64_t* array, size_t size) {
+//     return std::vector<int64_t>(array, array + size);
+// }
 
 extern "C" {
 
@@ -30,7 +46,8 @@ CudnnFrontendError_t build_bn_forward_graph(
     const CudnnTensorDescriptor_t* y_desc,
     float epsilon,
     float momentum,
-    int mode  // 0: inference, 1: training
+    int mode, 
+    CudnnFrontendDataType_t data_type_
 ) {
     if (graph_out == nullptr || x_desc == nullptr || scale_desc == nullptr ||
         bias_desc == nullptr || y_desc == nullptr) {
@@ -42,7 +59,7 @@ CudnnFrontendError_t build_bn_forward_graph(
 
         auto graph = std::make_shared<graph::Graph>();
 
-        auto data_type = getCudnnDataType(x_desc->data_type);
+        auto data_type = getCudnnDataType(data_type_);
 
         graph->set_io_data_type(data_type)
             .set_intermediate_data_type(DataType_t::FLOAT)
@@ -66,15 +83,6 @@ CudnnFrontendError_t build_bn_forward_graph(
                                       .set_stride(vector_from_array(bias_desc->strides, bias_desc->num_dims))
                                       .set_data_type(DataType_t::FLOAT));
 
-        auto epsilon_tensor = graph->tensor(epsilon);
-        auto momentum_tensor = graph->tensor(momentum);
-
-        graph::Batchnorm_attributes batchnorm_options;
-        batchnorm_options.set_epsilon(epsilon_tensor);
-
-        std::shared_ptr<graph::Tensor_attributes> Mean, InvVar;
-        std::shared_ptr<graph::Tensor_attributes> NextRunningMean, NextRunningVar;
-
         if (mode == 0) {
             // Inference mode
             auto Mean_in = graph->tensor(graph::Tensor_attributes()
@@ -89,14 +97,18 @@ CudnnFrontendError_t build_bn_forward_graph(
                                             .set_stride(vector_from_array(var_desc->strides, var_desc->num_dims))
                                             .set_data_type(DataType_t::FLOAT));
 
-            batchnorm_options.set_running_stats(Mean_in, Var_in);
+            // Create Batchnorm_inference_attributes
+            graph::Batchnorm_inference_attributes batchnorm_inference_options;
+            batchnorm_inference_options.set_epsilon(epsilon);
+
             // Build BN inference
-            auto Y = graph->batchnorm_inference(X, Mean_in, Var_in, Scale, Bias, batchnorm_options);
+            auto Y = graph->batchnorm_inference(X, Mean_in, Var_in, Scale, Bias, batchnorm_inference_options);
             Y->set_dim(vector_from_array(y_desc->dims, y_desc->num_dims)).set_output(true);
 
             // Set inputs and outputs
             bn_graph->input_tensors = {X, Scale, Bias, Mean_in, Var_in};
-            bn_graph->output_tensors = {Y};
+            bn_graph->output_tensors.clear();
+            bn_graph->output_tensors.push_back(Y);
         } else {
             // Training mode
             auto PrevRunningMean = graph->tensor(graph::Tensor_attributes()
@@ -111,11 +123,21 @@ CudnnFrontendError_t build_bn_forward_graph(
                                                     .set_stride(vector_from_array(var_desc->strides, var_desc->num_dims))
                                                     .set_data_type(DataType_t::FLOAT));
 
-            batchnorm_options.set_previous_running_stats(PrevRunningMean, PrevRunningVar, momentum_tensor);
+            graph::Batchnorm_attributes batchnorm_options;
+            batchnorm_options.set_epsilon(epsilon);
+            batchnorm_options.set_momentum(momentum);
+            // batchnorm_options.set_previous_running_mean(PrevRunningMean);
+            // batchnorm_options.set_previous_running_var(PrevRunningVar);
+            batchnorm_options.set_previous_running_stats(PrevRunningMean, PrevRunningVar);
 
             // Build BN forward
-            auto [Y, Mean, InvVar, NextRunningMean, NextRunningVar] =
-                graph->batchnorm(X, Scale, Bias, batchnorm_options);
+            auto outputs = graph->batchnorm(X, Scale, Bias, batchnorm_options);
+
+            auto Y = outputs[0];
+            auto Mean = outputs[1];
+            auto InvVar = outputs[2];
+            auto NextRunningMean = outputs[3];
+            auto NextRunningVar = outputs[4];
 
             Y->set_dim(vector_from_array(y_desc->dims, y_desc->num_dims)).set_output(true);
             Mean->set_output(true).set_data_type(DataType_t::FLOAT);
@@ -125,7 +147,12 @@ CudnnFrontendError_t build_bn_forward_graph(
 
             // Set inputs and outputs
             bn_graph->input_tensors = {X, Scale, Bias, PrevRunningMean, PrevRunningVar};
-            bn_graph->output_tensors = {Y, Mean, InvVar, NextRunningMean, NextRunningVar};
+            bn_graph->output_tensors.clear();
+            bn_graph->output_tensors.push_back(Y);
+            bn_graph->output_tensors.push_back(Mean);
+            bn_graph->output_tensors.push_back(InvVar);
+            bn_graph->output_tensors.push_back(NextRunningMean);
+            bn_graph->output_tensors.push_back(NextRunningVar);
         }
 
         // Validate and build the graph
@@ -184,7 +211,8 @@ CudnnFrontendError_t build_bn_backward_graph(
     const CudnnTensorDescriptor_t* dx_desc,
     const CudnnTensorDescriptor_t* dscale_desc,
     const CudnnTensorDescriptor_t* dbias_desc,
-    int mode  // 0: per-activation, 1: spatial
+    int mode,
+    CudnnFrontendDataType_t data_type_
 ) {
     if (graph_out == nullptr || x_desc == nullptr || dy_desc == nullptr ||
         scale_desc == nullptr || saved_mean_desc == nullptr || saved_inv_var_desc == nullptr ||
@@ -197,7 +225,7 @@ CudnnFrontendError_t build_bn_backward_graph(
 
         auto graph = std::make_shared<graph::Graph>();
 
-        auto data_type = getCudnnDataType(x_desc->data_type);
+        auto data_type = getCudnnDataType(data_type_);
 
         graph->set_io_data_type(data_type)
             .set_intermediate_data_type(DataType_t::FLOAT)

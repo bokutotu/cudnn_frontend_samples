@@ -24,7 +24,8 @@ CudnnFrontendError_t build_bn_forward_graph(
     const CudnnTensorDescriptor_t* y_desc,      // Output tensor descriptor
     float epsilon,
     float momentum,
-    int mode  // 0: inference, 1: training
+    int mode,  // 0: inference, 1: training
+    CudnnFrontendDataType_t data_type
 );
 
 // Build BN backward graph
@@ -39,7 +40,8 @@ CudnnFrontendError_t build_bn_backward_graph(
     const CudnnTensorDescriptor_t* dx_desc,     // Gradient input tensor descriptor (output)
     const CudnnTensorDescriptor_t* dscale_desc, // Gradient scale tensor descriptor (output)
     const CudnnTensorDescriptor_t* dbias_desc,  // Gradient bias tensor descriptor (output)
-    int mode  // 0: per-activation, 1: spatial
+    int mode,  // 0: per-activation, 1: spatial
+    CudnnFrontendDataType_t data_type
 );
 
 // Get workspace size
