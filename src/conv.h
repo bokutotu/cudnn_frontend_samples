@@ -66,6 +66,3 @@ CudnnFrontendError_t get_num_outputs(ConvGraph_t graph, size_t* num_outputs);
 #ifdef __cplusplus
 }
 #endif
-
-// #endif // CONV_API_H
-

@@ -4,6 +4,8 @@
 extern "C" {
 #endif
 
+#include <stddef.h>
+#include <stdint.h>
 
 typedef enum {
     SUCCESS = 0,
