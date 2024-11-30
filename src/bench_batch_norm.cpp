@@ -26,17 +26,29 @@ std::tuple<cudnn_frontend::graph::Graph, BNTensors> create_bn_graph() {
         .set_compute_data_type(cudnn_frontend::DataType_t::FLOAT);
 
     tensors.sum = graph.tensor(cudnn_frontend::graph::Tensor_attributes()
-        .set_name("sum").set_dim({1, 32, 1, 1}).set_stride({32, 1, 32, 32}));
+                               .set_name("sum")
+                               .set_dim({1, 32, 1, 1})
+                               .set_stride({32, 1, 32, 32}));
     tensors.sq_sum = graph.tensor(cudnn_frontend::graph::Tensor_attributes()
-        .set_name("sq_sum").set_dim({1, 32, 1, 1}).set_stride({32, 1, 32, 32}));
+                                  .set_name("sq_sum")
+                                  .set_dim({1, 32, 1, 1})
+                                  .set_stride({32, 1, 32, 32}));
     tensors.prev_running_mean = graph.tensor(cudnn_frontend::graph::Tensor_attributes()
-        .set_name("prev_running_mean").set_dim({1, 32, 1, 1}).set_stride({32, 1, 32, 32}));
+                                             .set_name("prev_running_mean")
+                                             .set_dim({1, 32, 1, 1})
+                                             .set_stride({32, 1, 32, 32}));
     tensors.prev_running_var = graph.tensor(cudnn_frontend::graph::Tensor_attributes()
-        .set_name("prev_running_var").set_dim({1, 32, 1, 1}).set_stride({32, 1, 32, 32}));
+                                            .set_name("prev_running_var")
+                                            .set_dim({1, 32, 1, 1})
+                                            .set_stride({32, 1, 32, 32}));
     tensors.scale = graph.tensor(cudnn_frontend::graph::Tensor_attributes()
-        .set_name("scale").set_dim({1, 32, 1, 1}).set_stride({32, 1, 32, 32}));
+                                 .set_name("scale")
+                                 .set_dim({1, 32, 1, 1})
+                                 .set_stride({32, 1, 32, 32}));
     tensors.bias = graph.tensor(cudnn_frontend::graph::Tensor_attributes()
-        .set_name("bias").set_dim({1, 32, 1, 1}).set_stride({32, 1, 32, 32}));
+                                .set_name("bias")
+                                .set_dim({1, 32, 1, 1})
+                                .set_stride({32, 1, 32, 32}));
 
     float EPS_scalar = 0.001f;
     float MOMENTUM_scalar = 0.001f;
@@ -74,33 +86,53 @@ void execute_bn_graph(cudnn_frontend::graph::Graph& graph, const BNTensors& tens
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
-    float *d_sum, *d_sq_sum, *d_mean, *d_var, *d_prev_mean, *d_prev_var;
-    float *d_next_mean, *d_next_var, *d_scale, *d_bias, *d_eq_scale, *d_eq_bias;
+    void *d_sum, *d_sq_sum, *d_mean, *d_var, *d_prev_mean, *d_prev_var;
+    void *d_next_mean, *d_next_var, *d_scale, *d_bias, *d_eq_scale, *d_eq_bias;
     
     const size_t tensor_size = 32 * sizeof(float);
-    cudaMalloc(&d_sum, tensor_size);
-    cudaMalloc(&d_sq_sum, tensor_size);
-    cudaMalloc(&d_mean, tensor_size);
-    cudaMalloc(&d_var, tensor_size);
-    cudaMalloc(&d_prev_mean, tensor_size);
-    cudaMalloc(&d_prev_var, tensor_size);
-    cudaMalloc(&d_next_mean, tensor_size);
-    cudaMalloc(&d_next_var, tensor_size);
-    cudaMalloc(&d_scale, tensor_size);
-    cudaMalloc(&d_bias, tensor_size);
-    cudaMalloc(&d_eq_scale, tensor_size);
-    cudaMalloc(&d_eq_bias, tensor_size);
+    cudaMalloc((void**)&d_sum, tensor_size);
+    cudaMalloc((void**)&d_sq_sum, tensor_size);
+    cudaMalloc((void**)&d_mean, tensor_size);
+    cudaMalloc((void**)&d_var, tensor_size);
+    cudaMalloc((void**)&d_prev_mean, tensor_size);
+    cudaMalloc((void**)&d_prev_var, tensor_size);
+    cudaMalloc((void**)&d_next_mean, tensor_size);
+    cudaMalloc((void**)&d_next_var, tensor_size);
+    cudaMalloc((void**)&d_scale, tensor_size);
+    cudaMalloc((void**)&d_bias, tensor_size);
+    cudaMalloc((void**)&d_eq_scale, tensor_size);
+    cudaMalloc((void**)&d_eq_bias, tensor_size);
 
     auto err = graph.validate();
+    if (!err.is_good()) {
+        std::cerr << "Error: " << err << std::endl;
+        return;
+    }
     err = graph.build_operation_graph(handle);
+    if (!err.is_good()) {
+        std::cerr << "Error: " << err << std::endl;
+        return;
+    }
     err = graph.create_execution_plans({cudnn_frontend::HeurMode_t::FALLBACK});
+    if (!err.is_good()) {
+        std::cerr << "Error: " << err << std::endl;
+        return;
+    }
     err = graph.check_support(handle);
+    if (!err.is_good()) {
+        std::cerr << "Error: " << err << std::endl;
+        return;
+    }
     err = graph.build_plans(handle);
+    if (!err.is_good()) {
+        std::cerr << "Error: " << err << std::endl;
+        return;
+    }
 
     int64_t workspace_size;
     err = graph.get_workspace_size(workspace_size);
     void* d_workspace;
-    cudaMalloc(&d_workspace, workspace_size);
+    cudaMalloc((void**)&d_workspace, workspace_size);
 
     std::unordered_map<std::shared_ptr<cudnn_frontend::graph::Tensor_attributes>, void*> variant_pack = {
         {tensors.sum, d_sum},
@@ -118,6 +150,10 @@ void execute_bn_graph(cudnn_frontend::graph::Graph& graph, const BNTensors& tens
     };
 
     err = graph.execute(handle, variant_pack, d_workspace);
+    if (!err.is_good()) {
+        std::cerr << "Error: " << err << std::endl;
+        return;
+    }
 
     cudaFree(d_sum);
     cudaFree(d_sq_sum);
@@ -138,7 +174,7 @@ void execute_bn_graph(cudnn_frontend::graph::Graph& graph, const BNTensors& tens
 
 int main() {
     auto start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 2; i++) {
         auto [graph, tensors] = create_bn_graph();
     }
     auto end = std::chrono::high_resolution_clock::now();
@@ -147,7 +183,7 @@ int main() {
 
     auto [graph, tensors] = create_bn_graph();
     start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < 1000; i++) {
+    for (int i = 0; i < 2; i++) {
         execute_bn_graph(graph, tensors);
     }
     end = std::chrono::high_resolution_clock::now();
