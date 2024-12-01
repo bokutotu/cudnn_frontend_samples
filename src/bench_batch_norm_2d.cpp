@@ -1,18 +1,4 @@
-#include <iostream>
-#include <vector>
-#include <unordered_map>
-#include <cuda_runtime.h>
-#include <cudnn.h>
 #include "cudnn_frontend.h"
-
-#define REQUIRE(x)                                                  \
-    {                                                               \
-        if (!(x)) {                                                 \
-            std::cerr << "Error at line " << __LINE__ << std::endl; \
-            return 1;                                               \
-        }                                                           \
-    }
-
 
 #define CUDA_CHECK(status)                                                                                    \
     {                                                                                                         \
@@ -21,7 +7,6 @@
             std::stringstream err_msg;                                                                        \
             err_msg << "CUDA Error: " << cudaGetErrorString(err) << " (" << err << ") at " << __FILE__ << ":" \
                     << __LINE__;                                                                              \
-            std::cerr << err_msg.str() << std::endl;                                                          \
             throw std::runtime_error(err_msg.str());                                                          \
         }                                                                                                     \
     }
@@ -33,23 +18,59 @@
             std::stringstream err_msg;                                                                          \
             err_msg << "cuDNN Error: " << cudnnGetErrorString(err) << " (" << err << ") at " << __FILE__ << ":" \
                     << __LINE__;                                                                                \
-            std::cerr << err_msg.str() << std::endl;                                                            \
             throw std::runtime_error(err_msg.str());                                                            \
         }                                                                                                       \
     }
 
+#define REQUIRE(expr)                                                                 \
+    if (!(expr)) {                                                                    \
+        std::cerr << "Error at " << __FILE__ << ":" << __LINE__ << std::endl;         \
+        return 1;                                                                     \
+    }
 
-template <typename T_ELEM>
-T_ELEM* alloc_gpu(int64_t n_elems) {
-    T_ELEM* devPtr;
-    CUDA_CHECK(
-        cudaMalloc((void**)&(devPtr), (size_t)((n_elems) * sizeof(devPtr[0])))
-    );
-    return devPtr;
-}
+template <typename T>
+struct Surface {
+    T* devPtr  = NULL;
+    T* hostPtr = NULL;
+    int64_t n_elems = 0;
+
+   protected:
+    explicit Surface() {}
+
+   public:
+    explicit Surface(int64_t n_elems, [[maybe_unused]] bool hasRef) : n_elems(n_elems) {
+        CUDA_CHECK(cudaMalloc((void**)&(devPtr), (size_t)((n_elems) * sizeof(devPtr[0]))));
+        hostPtr = (T*)calloc((size_t)n_elems, sizeof(hostPtr[0]));
+        CUDA_CHECK(cudaMemcpy(devPtr, hostPtr, size_t(sizeof(hostPtr[0]) * n_elems), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    explicit Surface(int64_t n_elems, [[maybe_unused]] bool hasRef, bool isInterleaved) {
+        (void)isInterleaved;
+        CUDA_CHECK(cudaMalloc((void**)&(devPtr), (n_elems) * sizeof(devPtr[0])));
+        hostPtr = (T*)calloc(n_elems, sizeof(hostPtr[0]));
+        uint32_t* temp = (uint32_t*)hostPtr;
+        for (auto i = 0; i < n_elems; i = i + 2) {
+            temp[i + 1] = 1u;
+        }
+
+        CUDA_CHECK(cudaMemcpy(devPtr, hostPtr, size_t(sizeof(hostPtr[0]) * n_elems), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    explicit Surface(int64_t size, [[maybe_unused]] bool hasRef, T fillValue) : n_elems(size) {
+        CUDA_CHECK(cudaMalloc((void**)&(devPtr), (size) * sizeof(devPtr[0])));
+        hostPtr = (T*)calloc(size, sizeof(hostPtr[0]));
+        for (int i = 0; i < size; i++) {
+            hostPtr[i] = fillValue;
+        }
+        CUDA_CHECK(cudaMemcpy(devPtr, hostPtr, sizeof(hostPtr[0]) * n_elems, cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+};
 
 int main() {
-    // CUDA_CHECK(cudaSetDevice(0));
     namespace fe = cudnn_frontend;
     fe::graph::Graph graph;
     graph.set_io_data_type(fe::DataType_t::HALF)
@@ -58,26 +79,26 @@ int main() {
 
     bool has_running_stats = true;
     auto X                 = graph.tensor(fe::graph::Tensor_attributes()
-                              // .set_name("X")
+                              .set_name("X")
                               .set_dim({4, 32, 16, 16})
                               .set_stride({32 * 16 * 16, 1, 32 * 16, 32}));
     auto prev_running_mean = graph.tensor(fe::graph::Tensor_attributes()
-                                              // .set_name("prev_running_mean")
+                                              .set_name("prev_running_mean")
                                               .set_dim({1, 32, 1, 1})
                                               .set_stride({32, 1, 32, 32})
                                               .set_data_type(fe::DataType_t::FLOAT));
     auto prev_running_var  = graph.tensor(fe::graph::Tensor_attributes()
-                                             // .set_name("prev_running_var")
+                                             .set_name("prev_running_var")
                                              .set_dim({1, 32, 1, 1})
                                              .set_stride({32, 1, 32, 32})
                                              .set_data_type(fe::DataType_t::FLOAT));
     auto scale             = graph.tensor(fe::graph::Tensor_attributes()
-                                  // .set_name("scale")
+                                  .set_name("scale")
                                   .set_dim({1, 32, 1, 1})
                                   .set_stride({32, 1, 32, 32})
                                   .set_data_type(fe::DataType_t::FLOAT));
     auto bias              = graph.tensor(fe::graph::Tensor_attributes()
-                                 // .set_name("bias")
+                                 .set_name("bias")
                                  .set_dim({1, 32, 1, 1})
                                  .set_stride({32, 1, 32, 32})
                                  .set_data_type(fe::DataType_t::FLOAT));
@@ -107,11 +128,13 @@ int main() {
 
     if (has_running_stats) {
         next_running_mean->set_output(true).set_data_type(fe::DataType_t::FLOAT);
+    }
+    if (has_running_stats) {
         next_running_var->set_output(true).set_data_type(fe::DataType_t::FLOAT);
     }
 
     auto A           = graph.tensor(fe::graph::Tensor_attributes()
-                              // .set_name("A")
+                              .set_name("A")
                               .set_dim({4, 32, 16, 16})
                               .set_stride({32 * 16 * 16, 1, 32 * 16, 32})
                               .set_data_type(fe::DataType_t::HALF));
@@ -135,71 +158,42 @@ int main() {
 
     REQUIRE(graph.build_plans(handle).is_good());
 
-
-    std::cout << "set up graph complited" << std::endl;
-
-    auto X_tensor = alloc_gpu<half>(4 * 32 * 16 * 16);
-    auto Mean_tensor = alloc_gpu<float>(32);
-    auto Var_tensor = alloc_gpu<float>(32);
-    auto Previous_running_mean_tensor = alloc_gpu<float>(32);
-    auto Previous_running_var_tensor = alloc_gpu<float>(32);
-    auto Next_running_mean_tensor = alloc_gpu<float>(32);
-    auto Next_running_var_tensor = alloc_gpu<float>(32);
-    auto Scale_tensor = alloc_gpu<float>(32);
-    auto Bias_tensor = alloc_gpu<float>(32);
-    auto A_tensor = alloc_gpu<half>(4 * 32 * 16 * 16);
-    auto Y_tensor = alloc_gpu<half>(4 * 32 * 16 * 16);
-    auto Peer_stats_0_tensor = alloc_gpu<float>(2 * 4 * 32);
-    auto Peer_stats_1_tensor = alloc_gpu<float>(2 * 4 * 32);
-
+    Surface<half> X_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> Mean_tensor(32, false);
+    Surface<float> Var_tensor(32, false);
+    Surface<float> Previous_running_mean_tensor(32, false);
+    Surface<float> Previous_running_var_tensor(32, false);
+    Surface<float> Next_running_mean_tensor(32, false);
+    Surface<float> Next_running_var_tensor(32, false);
+    Surface<float> Scale_tensor(32, false);
+    Surface<float> Bias_tensor(32, false);
+    Surface<half> A_tensor(4 * 32 * 16 * 16, false);
+    Surface<half> Y_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> Peer_stats_0_tensor(2 * 4 * 32, false, true);
+    Surface<float> Peer_stats_1_tensor(2 * 4 * 32, false);
 
     int64_t workspace_size;
     REQUIRE(graph.get_workspace_size(workspace_size).is_good());
-    auto workspace = alloc_gpu<int8_t>(workspace_size);
+    Surface<int8_t> workspace(workspace_size, false);
 
-    std::cout << "allocated memory" << std::endl;
     std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*> variant_pack = {
-        {X, X_tensor},
-        {mean, Mean_tensor},
-        {inv_variance, Var_tensor},
-        {scale, Scale_tensor},
-        {bias, Bias_tensor},
-        {A, A_tensor},
-        {Y, Y_tensor},
-        {peer_stats_0, Peer_stats_0_tensor},
-        {peer_stats_1, Peer_stats_1_tensor}};
+        {X, X_tensor.devPtr},
+        {mean, Mean_tensor.devPtr},
+        {inv_variance, Var_tensor.devPtr},
+        {scale, Scale_tensor.devPtr},
+        {bias, Bias_tensor.devPtr},
+        {A, A_tensor.devPtr},
+        {Y, Y_tensor.devPtr},
+        {peer_stats_0, Peer_stats_0_tensor.devPtr},
+        {peer_stats_1, Peer_stats_1_tensor.devPtr}};
 
     if (has_running_stats) {
-        variant_pack[prev_running_mean] = Previous_running_mean_tensor;
-        variant_pack[prev_running_var]  = Previous_running_var_tensor;
-        variant_pack[next_running_mean] = Next_running_mean_tensor;
-        variant_pack[next_running_var]  = Next_running_var_tensor;
+        variant_pack[prev_running_mean] = Previous_running_mean_tensor.devPtr;
+        variant_pack[prev_running_var]  = Previous_running_var_tensor.devPtr;
+        variant_pack[next_running_mean] = Next_running_mean_tensor.devPtr;
+        variant_pack[next_running_var]  = Next_running_var_tensor.devPtr;
     }
-    std::cout << "before execute" << std::endl;
-    REQUIRE(graph.execute(handle, variant_pack, workspace).is_good());
-    std::cout << "after execute" << std::endl;
-
-    CUDA_CHECK(cudaFree(X_tensor));
-    CUDA_CHECK(cudaFree(Mean_tensor));
-    CUDA_CHECK(cudaFree(Var_tensor));
-    CUDA_CHECK(cudaFree(Previous_running_mean_tensor));
-    CUDA_CHECK(cudaFree(Previous_running_var_tensor));
-    CUDA_CHECK(cudaFree(Next_running_mean_tensor));
-    CUDA_CHECK(cudaFree(Next_running_var_tensor));
-    CUDA_CHECK(cudaFree(Scale_tensor));
-    CUDA_CHECK(cudaFree(Bias_tensor));
-    CUDA_CHECK(cudaFree(A_tensor));
-    CUDA_CHECK(cudaFree(Y_tensor));
-    CUDA_CHECK(cudaFree(Peer_stats_0_tensor));
-    CUDA_CHECK(cudaFree(Peer_stats_1_tensor));
-    CUDA_CHECK(cudaFree(workspace));
-
-    std::cout << "freed memory" << std::endl;
-
-    cudaDeviceSynchronize();
-    std::cout << "sync done" << std::endl;
+    REQUIRE(graph.execute(handle, variant_pack, workspace.devPtr).is_good());
 
     cudnnDestroy(handle);
-
-    return 0;
 }
