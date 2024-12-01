@@ -98,4 +98,4 @@ Mkfile.old
 dkms.conf
 
 .ccls-cache/*
-build/*
+build
