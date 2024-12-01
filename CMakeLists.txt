@@ -81,6 +81,7 @@ if(CUDNN_FRONTEND_BUILD_TESTS)
     include(CTest)
     add_test(NAME run_tests COMMAND run_tests)
 endif()
+
 file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/.ccls "
 %compile_commands.json=build/compile_commands.json
 %clang

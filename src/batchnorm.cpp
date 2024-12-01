@@ -113,28 +113,33 @@ BatchNormDescriptor::BatchNormDescriptor(CudnnTensorShapeStride input_shape_stri
 
 CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t* handle) {
     auto err = graph.validate();
-    if (err.is_good()) {
-        std::cout << "Graph validation succeeded" << std::endl;
+    if (!err.is_good()) {
+        std::cout << "Graph validation " << std::endl;
+        std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.build_operation_graph(*handle);
-    if (err.is_good()) {
-        std::cout << "Graph build operation graph succeeded" << std::endl;
+    if (!err.is_good()) {
+        std::cout << "Graph build operation graph " << std::endl;
+        std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.create_execution_plans({fe::HeurMode_t::FALLBACK});
-    if (err.is_good()) {
-        std::cout << "Graph create execution plans succeeded" << std::endl;
+    if (!err.is_good()) {
+        std::cout << "Graph create execution plans " << std::endl;
+        std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.check_support(*handle);
-    if (err.is_good()) {
-        std::cout << "Graph check support succeeded" << std::endl;
+    if (!err.is_good()) {
+        std::cout << "Graph check support " << std::endl;
+        std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.build_plans(*handle);
-    if (err.is_good()) {
-        std::cout << "Graph build plans succeeded" << std::endl;
+    if (!err.is_good()) {
+        std::cout << "Graph build plans " << std::endl;
+        std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     return CudnnFrontendError_t::SUCCESS;
@@ -169,7 +174,7 @@ CudnnFrontendError_t BatchNormDescriptor::execute(cudnnHandle_t* handle,
     }
 
     auto err = graph.execute(*handle, variant_pack, workspace);
-    if (err.is_good()) {
+    if (!err.is_good()) {
         std::cout << "Graph execute failed" << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
