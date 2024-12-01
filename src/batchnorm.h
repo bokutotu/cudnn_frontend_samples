@@ -82,9 +82,9 @@ public:
                         float epsilon, 
                         float momentum);
 
-    CudnnFrontendError_t check_graph(cudnnHandle_t handle);
+    CudnnFrontendError_t check_graph(cudnnHandle_t* handle);
 
-    CudnnFrontendError_t get_workspace_size(int64_t& workspace_size);
+    CudnnFrontendError_t get_workspace_size(int64_t* workspace_size);
 
-    CudnnFrontendError_t execute(cudnnHandle_t handle, BatchNormExecutionBuffers buffers, void* workspace);
+    CudnnFrontendError_t execute(cudnnHandle_t* handle, BatchNormExecutionBuffers* buffers, void* workspace);
 };

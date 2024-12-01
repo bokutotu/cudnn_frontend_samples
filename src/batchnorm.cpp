@@ -111,13 +111,13 @@ BatchNormDescriptor::BatchNormDescriptor(CudnnTensorShapeStride input_shape_stri
     this->graph = graph;
 }
 
-CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t handle) {
+CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t* handle) {
     auto err = graph.validate();
     if (err.is_good()) {
         std::cout << "Graph validation succeeded" << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
-    err = graph.build_operation_graph(handle);
+    err = graph.build_operation_graph(*handle);
     if (err.is_good()) {
         std::cout << "Graph build operation graph succeeded" << std::endl;
         return CudnnFrontendError_t::FAILURE;
@@ -127,12 +127,12 @@ CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t handle) {
         std::cout << "Graph create execution plans succeeded" << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
-    err = graph.check_support(handle);
+    err = graph.check_support(*handle);
     if (err.is_good()) {
         std::cout << "Graph check support succeeded" << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
-    err = graph.build_plans(handle);
+    err = graph.build_plans(*handle);
     if (err.is_good()) {
         std::cout << "Graph build plans succeeded" << std::endl;
         return CudnnFrontendError_t::FAILURE;
@@ -140,35 +140,35 @@ CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t handle) {
     return CudnnFrontendError_t::SUCCESS;
 }
 
-CudnnFrontendError_t BatchNormDescriptor::get_workspace_size(int64_t& workspace_size) {
-    auto err = graph.get_workspace_size(workspace_size);
+CudnnFrontendError_t BatchNormDescriptor::get_workspace_size(int64_t* workspace_size) {
+    auto err = graph.get_workspace_size(*workspace_size);
     if (err.is_good()) {
         return CudnnFrontendError_t::FAILURE;
     }
     return CudnnFrontendError_t::SUCCESS;
 }
 
-CudnnFrontendError_t BatchNormDescriptor::execute(cudnnHandle_t handle, 
-                                                  BatchNormExecutionBuffers buffers, 
+CudnnFrontendError_t BatchNormDescriptor::execute(cudnnHandle_t* handle, 
+                                                  BatchNormExecutionBuffers* buffers, 
                                                   void* workspace) {
     std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*> variant_pack = {
-        {attributes.X, buffers.X},
-        {attributes.mean, buffers.mean},
-        {attributes.inv_variance, buffers.inv_variance},
-        {attributes.scale, buffers.scale},
-        {attributes.bias, buffers.bias},
-        {attributes.bn_output, buffers.Y},
-        {attributes.peer_stats_0, buffers.peer_stats_0},
-        {attributes.peer_stats_1, buffers.peer_stats_1}};
+        {attributes.X, buffers->X},
+        {attributes.mean, buffers->mean},
+        {attributes.inv_variance, buffers->inv_variance},
+        {attributes.scale, buffers->scale},
+        {attributes.bias, buffers->bias},
+        {attributes.bn_output, buffers->Y},
+        {attributes.peer_stats_0, buffers->peer_stats_0},
+        {attributes.peer_stats_1, buffers->peer_stats_1}};
 
     if (has_running_stats) {
-        variant_pack[attributes.prev_running_mean] = buffers.prev_running_mean;
-        variant_pack[attributes.prev_running_var]  = buffers.prev_running_var;
-        variant_pack[attributes.next_running_mean] = buffers.next_running_mean;
-        variant_pack[attributes.next_running_var]  = buffers.next_running_var;
+        variant_pack[attributes.prev_running_mean] = buffers->prev_running_mean;
+        variant_pack[attributes.prev_running_var]  = buffers->prev_running_var;
+        variant_pack[attributes.next_running_mean] = buffers->next_running_mean;
+        variant_pack[attributes.next_running_var]  = buffers->next_running_var;
     }
 
-    auto err = graph.execute(handle, variant_pack, workspace);
+    auto err = graph.execute(*handle, variant_pack, workspace);
     if (err.is_good()) {
         std::cout << "Graph execute failed" << std::endl;
         return CudnnFrontendError_t::FAILURE;

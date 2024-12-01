@@ -6,6 +6,7 @@ extern "C" {
 
 #include <stddef.h>
 #include <stdint.h>
+#include <cudnn.h>
 
 typedef enum {
     SUCCESS = 0,
@@ -52,8 +53,14 @@ CudnnFrontendError_t create_batch_norm_descriptor(BatchNormDescriptor** desc,
                                                   float momentum,
                                                   bool is_training);
 
+CudnnFrontendError_t check_graph(BatchNormDescriptor* desc, cudnnHandle_t* handle);
+
+CudnnFrontendError_t get_workspace_size(BatchNormDescriptor* desc, int64_t* workspace_size);
+
 CudnnFrontendError_t execute_batch_norm_forward_training(BatchNormDescriptor* desc, 
-                                                         BatchNormExecutionBuffers* buffers);
+                                                         BatchNormExecutionBuffers* buffers,
+                                                         void* workspace,
+                                                         cudnnHandle_t* handle);
 
 typedef struct BatchNormBackwardDataDescriptor BatchNormBackwardDataDescriptor;
 
