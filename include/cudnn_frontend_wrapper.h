@@ -16,9 +16,9 @@ typedef enum {
 } CudnnFrontendError_t;
 
 typedef enum {
-    DATA_TYPE_HALF,
-    DATA_TYPE_FLOAT,
-    DATA_TYPE_DOUBLE,
+    DATA_TYPE_HALF = 0,
+    DATA_TYPE_FLOAT = 1,
+    DATA_TYPE_DOUBLE = 2,
     // Add more as needed
 } CudnnFrontendDataType_t;
 
@@ -48,11 +48,9 @@ typedef struct {
 CudnnFrontendError_t create_batch_norm_descriptor(BatchNormDescriptor** desc, 
                                                   CudnnFrontendDataType_t data_type, 
                                                   const CudnnTensorShapeStride* shape,
+                                                  float epsilon,
+                                                  float momentum,
                                                   bool is_training);
-
-CudnnFrontendError_t set_batch_norm_epsilon(BatchNormDescriptor* desc, float epsilon);
-
-CudnnFrontendError_t set_batch_norm_momentum(BatchNormDescriptor* desc, float momentum);
 
 CudnnFrontendError_t execute_batch_norm_forward_training(BatchNormDescriptor* desc, 
                                                          BatchNormExecutionBuffers* buffers);
