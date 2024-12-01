@@ -67,38 +67,32 @@ struct Surface {
         CUDA_CHECK(cudaMemcpy(devPtr, hostPtr, sizeof(hostPtr[0]) * n_elems, cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaDeviceSynchronize());
     }
-
 };
 
 int main() {
     namespace fe = cudnn_frontend;
     fe::graph::Graph graph;
-    graph.set_io_data_type(fe::DataType_t::HALF)
+    graph.set_io_data_type(fe::DataType_t::FLOAT)
         .set_intermediate_data_type(fe::DataType_t::FLOAT)
         .set_compute_data_type(fe::DataType_t::FLOAT);
 
     bool has_running_stats = true;
     auto X                 = graph.tensor(fe::graph::Tensor_attributes()
-                              .set_name("X")
                               .set_dim({4, 32, 16, 16})
                               .set_stride({32 * 16 * 16, 1, 32 * 16, 32}));
     auto prev_running_mean = graph.tensor(fe::graph::Tensor_attributes()
-                                              .set_name("prev_running_mean")
                                               .set_dim({1, 32, 1, 1})
                                               .set_stride({32, 1, 32, 32})
                                               .set_data_type(fe::DataType_t::FLOAT));
     auto prev_running_var  = graph.tensor(fe::graph::Tensor_attributes()
-                                             .set_name("prev_running_var")
                                              .set_dim({1, 32, 1, 1})
                                              .set_stride({32, 1, 32, 32})
                                              .set_data_type(fe::DataType_t::FLOAT));
     auto scale             = graph.tensor(fe::graph::Tensor_attributes()
-                                  .set_name("scale")
                                   .set_dim({1, 32, 1, 1})
                                   .set_stride({32, 1, 32, 32})
                                   .set_data_type(fe::DataType_t::FLOAT));
     auto bias              = graph.tensor(fe::graph::Tensor_attributes()
-                                 .set_name("bias")
                                  .set_dim({1, 32, 1, 1})
                                  .set_stride({32, 1, 32, 32})
                                  .set_data_type(fe::DataType_t::FLOAT));
@@ -133,17 +127,7 @@ int main() {
         next_running_var->set_output(true).set_data_type(fe::DataType_t::FLOAT);
     }
 
-    auto A           = graph.tensor(fe::graph::Tensor_attributes()
-                              .set_name("A")
-                              .set_dim({4, 32, 16, 16})
-                              .set_stride({32 * 16 * 16, 1, 32 * 16, 32})
-                              .set_data_type(fe::DataType_t::HALF));
-    auto add_options = fe::graph::Pointwise_attributes().set_mode(fe::PointwiseMode_t::ADD);
-    auto add_output  = graph.pointwise(bn_output, A, add_options);
-
-    auto relu_options = fe::graph::Pointwise_attributes().set_mode(fe::PointwiseMode_t::RELU_FWD);
-    auto Y            = graph.pointwise(add_output, relu_options);
-    Y->set_output(true);
+    bn_output->set_output(true);
 
     cudnnHandle_t handle;
     CUDNN_CHECK(cudnnCreate(&handle));
@@ -158,7 +142,7 @@ int main() {
 
     REQUIRE(graph.build_plans(handle).is_good());
 
-    Surface<half> X_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> X_tensor(4 * 32 * 16 * 16, false);
     Surface<float> Mean_tensor(32, false);
     Surface<float> Var_tensor(32, false);
     Surface<float> Previous_running_mean_tensor(32, false);
@@ -167,8 +151,7 @@ int main() {
     Surface<float> Next_running_var_tensor(32, false);
     Surface<float> Scale_tensor(32, false);
     Surface<float> Bias_tensor(32, false);
-    Surface<half> A_tensor(4 * 32 * 16 * 16, false);
-    Surface<half> Y_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> BN_Output(4 * 32 * 16 * 16, false);
     Surface<float> Peer_stats_0_tensor(2 * 4 * 32, false, true);
     Surface<float> Peer_stats_1_tensor(2 * 4 * 32, false);
 
@@ -182,8 +165,7 @@ int main() {
         {inv_variance, Var_tensor.devPtr},
         {scale, Scale_tensor.devPtr},
         {bias, Bias_tensor.devPtr},
-        {A, A_tensor.devPtr},
-        {Y, Y_tensor.devPtr},
+        {bn_output, BN_Output.devPtr},
         {peer_stats_0, Peer_stats_0_tensor.devPtr},
         {peer_stats_1, Peer_stats_1_tensor.devPtr}};
 

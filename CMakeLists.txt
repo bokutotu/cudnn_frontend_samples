@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(cudnn_frontend_sample VERSION 1.8.0)
+project(cudnn_frontend_wrapper VERSION 1.8.0)
+
+option(CUDNN_FRONTEND_SKIP_JSON_LIB "Defines whether FE should not include nlohmann/json.hpp." OFF)
 
 find_package(Threads)
 find_package(CUDA REQUIRED)
@@ -10,60 +12,78 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Catch2 QUIET)
-if(NOT Catch2_FOUND)
-    include(FetchContent)
+include(${PROJECT_SOURCE_DIR}/cudnn-frontend/cmake/cuDNN.cmake)
 
+add_library(cudnn_frontend INTERFACE)
+
+# Set include directories
+include_directories(
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/cudnn-frontend/include
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+# Set compile definitions
+add_compile_definitions(
+    $<$<BOOL:${CUDNN_FRONTEND_SKIP_JSON_LIB}>:CUDNN_FRONTEND_SKIP_JSON_LIB>
+)
+
+# Add source files
+file(GLOB_RECURSE SRC_FILES ${PROJECT_SOURCE_DIR}/src/*.cpp)
+
+# Add static library
+add_library(cudnn_frontend_wrapper STATIC ${SRC_FILES})
+
+target_compile_options(cudnn_frontend_wrapper PUBLIC
+    -I${CMAKE_SOURCE_DIR}/cudnn-frontend/include
+)
+
+# Link libraries
+target_link_libraries(cudnn_frontend_wrapper
+    Threads::Threads
+    CUDA::cudart
+    CUDA::cuda_driver
+    CUDNN::cudnn
+)
+
+# Set include directories for the target
+target_include_directories(cudnn_frontend_wrapper PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/cudnn-frontend/include
+    ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+if(CUDNN_FRONTEND_BUILD_TESTS)
+    # Add Catch2
+    include(FetchContent)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG        v3.3.2
+        GIT_TAG v2.13.7
     )
     FetchContent_MakeAvailable(Catch2)
+
+    # Add test source files
+    file(GLOB_RECURSE TEST_SRC_FILES ${PROJECT_SOURCE_DIR}/tests/*.cpp)
+
+    # Add test executable
+    add_executable(run_tests ${TEST_SRC_FILES})
+
+    # Link libraries to test executable
+    target_link_libraries(run_tests
+        cudnn_frontend_wrapper
+        Catch2::Catch2
+    )
+
+    # Add test to CTest
+    include(CTest)
+    add_test(NAME run_tests COMMAND run_tests)
 endif()
-
-include(${PROJECT_SOURCE_DIR}/cudnn-frontend/cmake/cuDNN.cmake)
-
-if(DEFINED ENV{NO_DEFAULT_IN_SWITCH})
-    message("Default case in the switch is disabled")
-    add_compile_definitions(NO_DEFAULT_IN_SWITCH)
-endif()
-
-add_executable(samples
-  src/bench_batch_norm_2d.cpp
-)
-
-# target_include_directories(samples PRIVATE ${CMAKE_SOURCE_DIR}/cudnn-frontend/include)
-add_library(cudnn_frontend INTERFACE)
-target_include_directories(cudnn_frontend INTERFACE ${CMAKE_SOURCE_DIR}/cudnn-frontend/include)
-target_compile_definitions(
-    cudnn_frontend INTERFACE
-    $<$<BOOL:${CUDNN_FRONTEND_SKIP_JSON_LIB}>:CUDNN_FRONTEND_SKIP_JSON_LIB>
-)
-target_include_directories(
-    cudnn_frontend INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cudnn-frontend/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
-target_compile_features(cudnn_frontend INTERFACE cxx_std_17)
-add_library(_cudnn_frontend_pch INTERFACE)
-target_precompile_headers(_cudnn_frontend_pch INTERFACE ${PROJECT_SOURCE_DIR}/cudnn-frontend/include/cudnn_frontend.h)
-
-target_compile_options(
-  samples PRIVATE
-  -Wall
-  -Wextra
-  -Werror
-  -Wno-unused-function
-)
-
-target_link_libraries(
-  samples PRIVATE
-  Threads::Threads
-  Catch2::Catch2WithMain
-  cudnn_frontend
-  _cudnn_frontend_pch
-  CUDNN::cudnn
-  CUDA::cudart
-  CUDA::cuda_driver
-)
+file(WRITE ${CMAKE_CURRENT_SOURCE_DIR}/.ccls "
+%compile_commands.json=build/compile_commands.json
+%clang
+-std=c++17
+-I${CMAKE_CURRENT_SOURCE_DIR}/cudnn-frontend/include
+")

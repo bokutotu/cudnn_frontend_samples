@@ -1,3 +1,5 @@
+
 %compile_commands.json=build/compile_commands.json
 %clang
 -std=c++17
+-I/home/bokutotu/cudnn_frontend_samples/cudnn-frontend/include

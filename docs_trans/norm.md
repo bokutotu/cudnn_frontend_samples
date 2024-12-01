@@ -8,7 +8,9 @@
 
 ### Batchnorm Forward
 Batchnorm演算は以下を計算します：
-$$ output = scale*{input - mean \over \sqrt{variance + epsilon}} + bias $$
+```math
+output = scale*{input - mean \over \sqrt{variance + epsilon}} + bias
+```
 
 オプションとして、以下も計算します：
 ```math
@@ -126,7 +128,9 @@ Python API:
 
 Layer normは以下を計算します：
 
-$$ output = scale*{input - mean \over \sqrt{variance + epsilon}} + bias $$
+```match
+output = scale*{input - mean \over \sqrt{variance + epsilon}} + bias
+```
 
 ここで、正規化は各サンプルに対して独立して特徴量全体で行われます。
 
