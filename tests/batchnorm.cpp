@@ -7,19 +7,6 @@
 #include <cstdlib>
 #include "helpers.h"
 
-void init_tensor_in_cpu(float* tensor, int64_t size) {
-    for (int64_t i = 0; i < size; i++) {
-        tensor[i] = (float)rand() / 1000.;
-    }
-}
-
-void init_tensor_in_gpu(float* tensor, int64_t size) {
-    float* tensor_cpu = (float*)malloc(size * sizeof(float));
-    init_tensor_in_cpu(tensor_cpu, size);
-    cudaMemcpy(tensor, tensor_cpu, size * sizeof(float), cudaMemcpyHostToDevice);
-    free(tensor_cpu);
-}
-
 TEST_CASE("Example test case", "[batchnorm2d]") {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
@@ -63,31 +50,6 @@ TEST_CASE("Example test case", "[batchnorm2d]") {
         .Y = nullptr
     };
 
-    // cudaMalloc(&buffers.X, 4*32*16*16*sizeof(float));
-    // cudaMalloc(&buffers.mean, 32*sizeof(float));
-    // cudaMalloc(&buffers.inv_variance, 32*sizeof(float));
-    // cudaMalloc(&buffers.scale, 32*sizeof(float));
-    // cudaMalloc(&buffers.bias, 32*sizeof(float));
-    // cudaMalloc(&buffers.peer_stats_0, 2*4*32*sizeof(float));
-    // cudaMalloc(&buffers.peer_stats_1, 2*4*32*sizeof(float));
-    // cudaMalloc(&buffers.prev_running_mean, 32*sizeof(float));
-    // cudaMalloc(&buffers.prev_running_var, 32*sizeof(float));
-    // cudaMalloc(&buffers.next_running_mean, 32*sizeof(float));
-    // cudaMalloc(&buffers.next_running_var, 32*sizeof(float));
-    // cudaMalloc(&buffers.Y, 4*32*16*16*sizeof(float));
-    //
-    // init_tensor_in_gpu((float*)buffers.X, 4*32*16*16);
-    // init_tensor_in_gpu((float*)buffers.mean, 32);
-    // init_tensor_in_gpu((float*)buffers.inv_variance, 32);
-    // init_tensor_in_gpu((float*)buffers.scale, 32);
-    // init_tensor_in_gpu((float*)buffers.bias, 32);
-    // init_tensor_in_gpu((float*)buffers.peer_stats_0, 2*4*32);
-    // init_tensor_in_gpu((float*)buffers.peer_stats_1, 2*4*32);
-    // init_tensor_in_gpu((float*)buffers.prev_running_mean, 32);
-    // init_tensor_in_gpu((float*)buffers.prev_running_var, 32);
-    // init_tensor_in_gpu((float*)buffers.next_running_mean, 32);
-    // init_tensor_in_gpu((float*)buffers.next_running_var, 32);
-    // init_tensor_in_gpu((float*)buffers.Y, 4*32*16*16);
     Surface<float> X_tensor(4 * 32 * 16 * 16, false);
     Surface<float> Mean_tensor(32, false);
     Surface<float> Var_tensor(32, false);
@@ -101,6 +63,7 @@ TEST_CASE("Example test case", "[batchnorm2d]") {
     Surface<float> Y_tensor(4 * 32 * 16 * 16, false);
     Surface<float> Peer_stats_0_tensor(2 * 4 * 32, false, true);
     Surface<float> Peer_stats_1_tensor(2 * 4 * 32, false);
+
     buffers.X = X_tensor.devPtr;
     buffers.mean = Mean_tensor.devPtr;
     buffers.inv_variance = Var_tensor.devPtr;
