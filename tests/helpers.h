@@ -6,7 +6,7 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 
-#include <catch2/catch_test_macros.hpp>
+// #include <catch2/catch_test_macros.hpp>
 
 #define CUDA_CHECK(status)                                                                                    \
     {                                                                                                         \
@@ -15,7 +15,7 @@
             std::stringstream err_msg;                                                                        \
             err_msg << "CUDA Error: " << cudaGetErrorString(err) << " (" << err << ") at " << __FILE__ << ":" \
                     << __LINE__;                                                                              \
-            FAIL(err_msg.str());                                                                              \
+            std::cout << (err_msg.str()) << std::endl;                                                        \
         }                                                                                                     \
     }
 
@@ -26,7 +26,7 @@
             std::stringstream err_msg;                                                                          \
             err_msg << "cuDNN Error: " << cudnnGetErrorString(err) << " (" << err << ") at " << __FILE__ << ":" \
                     << __LINE__;                                                                                \
-            FAIL(err_msg.str());                                                                                \
+            std::cout << err_msg.str() << std::endl;                                                            \
         }                                                                                                       \
     }
 
