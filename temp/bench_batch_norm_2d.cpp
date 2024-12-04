@@ -79,7 +79,8 @@ int main() {
     bool has_running_stats = true;
     auto X                 = graph.tensor(fe::graph::Tensor_attributes()
                               .set_dim({4, 32, 16, 16})
-                              .set_stride({32 * 16 * 16, 1, 32 * 16, 32}));
+                              // .set_stride({32 * 16 * 16, 1, 32 * 16, 32}));
+                              .set_stride({32 * 16 * 16, 16 * 16, 16, 1});
     auto prev_running_mean = graph.tensor(fe::graph::Tensor_attributes()
                                               .set_dim({1, 32, 1, 1})
                                               .set_stride({32, 1, 32, 32})

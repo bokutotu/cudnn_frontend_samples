@@ -21,6 +21,10 @@ CudnnFrontendError_t check_graph(BatchNormDescriptor* desc, cudnnHandle_t* handl
     return desc->check_graph(handle);
 }
 
+void batch_norm_desc_debug(BatchNormDescriptor* desc) {
+    desc->debug_print();
+}
+
 CudnnFrontendError_t execute_batch_norm_forward_training(BatchNormDescriptor* desc, 
                                                          BatchNormExecutionBuffers* buffers,
                                                          void* workspace,

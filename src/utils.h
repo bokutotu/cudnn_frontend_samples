@@ -38,3 +38,10 @@ cudnn_frontend::graph::Tensor_attributes get_tensor_attributes(std::vector<int64
         .set_stride(strides)
         .set_data_type(type);
 }
+
+cudnn_frontend::graph::Tensor_attributes get_tensor_attributes_without_type(std::vector<int64_t> shape,
+                                                               std::vector<int64_t> strides) {
+    return cudnn_frontend::graph::Tensor_attributes()
+        .set_dim(shape)
+        .set_stride(strides);
+}

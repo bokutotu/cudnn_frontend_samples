@@ -53,6 +53,8 @@ CudnnFrontendError_t create_batch_norm_descriptor(BatchNormDescriptor** desc,
                                                   float momentum,
                                                   bool is_training);
 
+void batch_norm_desc_debug(BatchNormDescriptor* desc);
+
 CudnnFrontendError_t check_graph(BatchNormDescriptor* desc, cudnnHandle_t* handle);
 
 CudnnFrontendError_t get_workspace_size(BatchNormDescriptor* desc, int64_t* workspace_size);

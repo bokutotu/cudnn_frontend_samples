@@ -8,6 +8,8 @@ namespace fe = cudnn_frontend;
 struct BatchNormTensorAttributes {
     BatchNormTensorAttributes() = default;
 
+    void debug_print();
+
     BatchNormTensorAttributes(std::shared_ptr<fe::graph::Tensor_attributes> X,
                               std::shared_ptr<fe::graph::Tensor_attributes> prev_running_mean,
                               std::shared_ptr<fe::graph::Tensor_attributes> prev_running_var,
@@ -39,7 +41,7 @@ struct BatchNormTensorAttributes {
         {}
 
     BatchNormTensorAttributes(CudnnTensorShapeStride input_shape, 
-                              fe::graph::Graph graph, 
+                              fe::graph::Graph &graph, 
                               CudnnFrontendDataType_t type, 
                               bool has_running_stats,
                               float epsilon,
@@ -85,6 +87,10 @@ public:
     CudnnFrontendError_t check_graph(cudnnHandle_t* handle);
 
     CudnnFrontendError_t get_workspace_size(int64_t* workspace_size);
+
+    void debug_print() {
+        attributes.debug_print();
+    }
 
     CudnnFrontendError_t execute(cudnnHandle_t* handle, BatchNormExecutionBuffers* buffers, void* workspace);
 };

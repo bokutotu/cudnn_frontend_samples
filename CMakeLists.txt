@@ -55,6 +55,11 @@ target_include_directories(cudnn_frontend_wrapper PUBLIC
     ${CUDAToolkit_INCLUDE_DIRS}
 )
 
+# Add debug information for Debug build
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(cudnn_frontend_wrapper PUBLIC -g)
+endif()
+
 if(CUDNN_FRONTEND_BUILD_TESTS)
     # Add Catch2
     include(FetchContent)

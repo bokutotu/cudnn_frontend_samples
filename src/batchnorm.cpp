@@ -50,8 +50,69 @@ std::vector<int64_t> get_peer_stats_stride(std::vector<int64_t> shape) {
     return stride;
 }
 
+std::string type_to_string(cudnn_frontend::DataType_t type) {
+    switch (type) {
+        case cudnn_frontend::DataType_t::HALF:
+            return "half";
+        case cudnn_frontend::DataType_t::FLOAT:
+            return "float";
+        case cudnn_frontend::DataType_t::DOUBLE:
+            return "double";
+        default:
+            return "unknown";
+    }
+}
+
+void debug_print_(std::shared_ptr<fe::graph::Tensor_attributes> tensor) {
+    std::cout << "Tensor: " << tensor->get_name() << std::endl;
+    std::cout << "Shape: ";
+    for (auto dim : tensor->get_dim()) {
+        std::cout << dim << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "Strides: ";
+    for (auto stride : tensor->get_stride()) {
+        std::cout << stride << " ";
+    }
+    std::cout << std::endl;
+    auto type = tensor->get_data_type();
+    auto type_string = type_to_string(type);
+    std::cout << "Data type: " << type_string << std::endl;
+}
+
+void BatchNormTensorAttributes::debug_print() {
+    std::cout << "X ";
+    debug_print_(X);
+    std::cout << "prev_running_meanv ";
+    debug_print_(prev_running_mean);
+    std::cout << "prev_running_var ";
+    debug_print_(prev_running_var);
+    std::cout << "scale ";
+    debug_print_(scale);
+    std::cout << "bias ";
+    debug_print_(bias);
+    std::cout << "peer_stats_0 ";
+    debug_print_(peer_stats_0);
+    std::cout << "peer_stats_1 ";
+    debug_print_(peer_stats_1);
+    std::cout << "epsilon ";
+    debug_print_(epsilon);
+    std::cout << "momentum ";
+    debug_print_(momentum);
+    std::cout << "next_running_mean ";
+    debug_print_(next_running_mean);
+    std::cout << "next_running_var ";
+    debug_print_(next_running_var);
+    std::cout << "bn_output ";
+    debug_print_(bn_output);
+    std::cout << "mean ";
+    debug_print_(mean);
+    std::cout << "inv_variance ";
+    debug_print_(inv_variance);
+}
+
 BatchNormTensorAttributes::BatchNormTensorAttributes(CudnnTensorShapeStride input_shape, 
-                                                     fe::graph::Graph graph, 
+                                                     fe::graph::Graph &graph, 
                                                      CudnnFrontendDataType_t type, 
                                                      bool has_running_stats,
                                                      float epsilon,
@@ -74,11 +135,16 @@ BatchNormTensorAttributes::BatchNormTensorAttributes(CudnnTensorShapeStride inpu
     peer_stats_1 = graph.tensor(get_tensor_attributes(peer_stats_shape, peer_stats_strides, type));
     this->epsilon = graph.tensor(fe::graph::Tensor_attributes(epsilon));
     this->momentum = graph.tensor(fe::graph::Tensor_attributes(momentum));
-    auto batchnorm_options = fe::graph::Batchnorm_attributes().set_epsilon(this->epsilon).set_peer_stats({peer_stats_0, peer_stats_1});
+    auto batchnorm_options = 
+        fe::graph::Batchnorm_attributes()
+            .set_epsilon(this->epsilon)
+            .set_peer_stats({peer_stats_0, peer_stats_1});
     if (has_running_stats) {
-        batchnorm_options.set_previous_running_stats(prev_running_mean, prev_running_var, this->momentum);
+        batchnorm_options
+            .set_previous_running_stats(prev_running_mean, prev_running_var, this->momentum);
     }
-    auto [bn_output, mean, inv_variance, next_running_mean, next_running_var] = graph.batchnorm(X, scale, bias, batchnorm_options);
+    auto [bn_output, mean, inv_variance, next_running_mean, next_running_var] = 
+        graph.batchnorm(X, scale, bias, batchnorm_options);
     auto data_type = get_data_type(type);
     mean->set_output(true).set_data_type(data_type);
     inv_variance->set_output(true).set_data_type(data_type);
@@ -86,13 +152,12 @@ BatchNormTensorAttributes::BatchNormTensorAttributes(CudnnTensorShapeStride inpu
         next_running_mean->set_output(true).set_data_type(data_type);
         next_running_var->set_output(true).set_data_type(data_type);
     }
-    bn_output->set_output(true);
+    bn_output->set_output(true).set_data_type(data_type);
     this->bn_output = bn_output;
     this->mean = mean;
     this->inv_variance = inv_variance;
     this->next_running_mean = next_running_mean;
     this->next_running_var = next_running_var;
-
 }
 
 BatchNormDescriptor::BatchNormDescriptor(CudnnTensorShapeStride input_shape_stride, 
@@ -101,14 +166,12 @@ BatchNormDescriptor::BatchNormDescriptor(CudnnTensorShapeStride input_shape_stri
                                          float epsilon,
                                          float momentum) :
     has_running_stats(has_running_stats) {
-    fe::graph::Graph graph;
     auto data_type = get_data_type(type);
     graph.set_io_data_type(data_type)
         .set_intermediate_data_type(data_type)
         .set_compute_data_type(data_type);
 
     attributes = BatchNormTensorAttributes(input_shape_stride, graph, type, has_running_stats, epsilon, momentum);
-    this->graph = graph;
 }
 
 CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t* handle) {
@@ -147,7 +210,7 @@ CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t* handle) {
 
 CudnnFrontendError_t BatchNormDescriptor::get_workspace_size(int64_t* workspace_size) {
     auto err = graph.get_workspace_size(*workspace_size);
-    if (err.is_good()) {
+    if (!err.is_good()) {
         return CudnnFrontendError_t::FAILURE;
     }
     return CudnnFrontendError_t::SUCCESS;
