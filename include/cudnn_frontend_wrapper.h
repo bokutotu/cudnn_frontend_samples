@@ -67,20 +67,24 @@ CudnnFrontendError_t execute_batch_norm_forward_training(BatchNormDescriptor* de
 typedef struct BatchNormBackwardDataDescriptor BatchNormBackwardDataDescriptor;
 
 typedef struct {
-    void* dY;
     void* X;
+    void* DY;
+    void* scale;
     void* mean;
     void* inv_variance;
-    void* scale;
-    void* dX;
-} BatchNormBackwardDataExecutionBuffers;
+    void* dscale;
+    void* dbias;
+    void* DX;
+    void* peer_stats_0;
+    void* peer_stats_1;
+} BatchNormBkwdExecutionBuffers;
 
 CudnnFrontendError_t create_batch_norm_backward_data_descriptor(BatchNormBackwardDataDescriptor** desc, 
                                                                 CudnnFrontendDataType_t data_type, 
                                                                 const CudnnTensorShapeStride* shape);
 
 CudnnFrontendError_t execute_batch_norm_backward_data(BatchNormBackwardDataDescriptor* desc,
-                                                      BatchNormBackwardDataExecutionBuffers* buffers);
+                                                      BatchNormBkwdExecutionBuffers* buffers);
 
 typedef struct ConvDescriptor ConvDescriptor;
 
