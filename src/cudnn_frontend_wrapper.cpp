@@ -32,18 +32,20 @@ CudnnFrontendError_t execute_batch_norm_forward_training(BatchNormDescriptor* de
     return desc->execute(handle, buffers, workspace);
 }
 
-CudnnFrontendError_t create_batch_norm_bckward_data_descriptor(BatchNormBkwdDescriptor** desc,
+CudnnFrontendError_t create_batch_norm_backward_data_descriptor(BatchNormBkwdDescriptor** desc,
                                                                CudnnFrontendDataType_t data_type,
                                                                const CudnnTensorShapeStride* shape) {
     *desc = new BatchNormBkwdDescriptor(*shape, data_type);
     return CudnnFrontendError_t::SUCCESS;
 }
 
-CudnnFrontendError_t get_backward_data_workspace_size(BatchNormBkwdDescriptor* desc, int64_t* workspace_size) {
+CudnnFrontendError_t get_backward_data_workspace_size(BatchNormBkwdDescriptor* desc, 
+                                                      int64_t* workspace_size) {
     return desc->get_workspace_size(workspace_size);
 }
 
-CudnnFrontendError_t check_backward_data_graph(BatchNormBkwdDescriptor* desc, cudnnHandle_t* handle) {
+CudnnFrontendError_t check_backward_data_graph(BatchNormBkwdDescriptor* desc, 
+                                               cudnnHandle_t* handle) {
     return desc->check_graph(handle);
 }
 

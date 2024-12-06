@@ -83,3 +83,59 @@ TEST_CASE("Example test case", "[batchnorm2d]") {
     status = execute_batch_norm_forward_training(desc, &buffers, workspace, &handle);
     REQUIRE(status == SUCCESS);
 };
+
+TEST_CASE("Example test case 2", "[batchnorm2d_bkwd]") {
+    cudnnHandle_t handle;
+    cudnnCreate(&handle);
+
+    CudnnTensorShapeStride shape = {
+        .num_dims = 4,
+        .dims = {4, 32, 16, 16},
+        .strides = {32*16*16, 16*16, 16, 1}
+    };
+
+    BatchNormBkwdDescriptor* desc;
+    CudnnFrontendError_t status = create_batch_norm_backward_data_descriptor(&desc, 
+                                                                           DATA_TYPE_FLOAT, 
+                                                                           &shape);
+    REQUIRE(status == SUCCESS);
+    CHECK(desc != nullptr);
+    status = check_backward_data_graph(desc, &handle);
+    REQUIRE(status == SUCCESS);
+    int64_t workspace_size;
+    status = get_backward_data_workspace_size(desc, &workspace_size);
+    REQUIRE(status == SUCCESS);
+    CHECK(workspace_size > 0);
+
+    BatchNormBkwdExecutionBuffers buffers = {
+        .X = nullptr,
+        .DY = nullptr,
+        .scale = nullptr,
+        .mean = nullptr,
+        .inv_variance = nullptr,
+        .dscale = nullptr,
+        .dbias = nullptr
+    };
+
+    Surface<float> X_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> DY_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> Scale_tensor(32, false);
+    Surface<float> Mean_tensor(32, false);
+    Surface<float> Var_tensor(32, false);
+    Surface<float> DS_tensor(32, false);
+    Surface<float> DB_tensor(32, false);
+
+    buffers.X = X_tensor.devPtr;
+    buffers.DY = DY_tensor.devPtr;
+    buffers.scale = Scale_tensor.devPtr;
+    buffers.mean = Mean_tensor.devPtr;
+    buffers.inv_variance = Var_tensor.devPtr;
+    buffers.dscale = DS_tensor.devPtr;
+    buffers.dbias = DB_tensor.devPtr;
+
+    void* workspace = nullptr;
+    cudaMalloc(&workspace, workspace_size);
+
+    status = execute_batch_norm_backward_data(desc, &buffers, workspace, &handle);
+    REQUIRE(status == SUCCESS);
+}

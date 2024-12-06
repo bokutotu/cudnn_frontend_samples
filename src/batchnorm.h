@@ -60,6 +60,8 @@ public:
 };
 
 struct BatchNormBkwdTensorAttributes {
+    BatchNormBkwdTensorAttributes() = default;
+
     BatchNormBkwdTensorAttributes(CudnnTensorShapeStride input_shape, 
                                   fe::graph::Graph &graph, 
                                   CudnnFrontendDataType_t type);

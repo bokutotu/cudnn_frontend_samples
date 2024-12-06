@@ -64,7 +64,7 @@ CudnnFrontendError_t execute_batch_norm_forward_training(BatchNormDescriptor* de
                                                          void* workspace,
                                                          cudnnHandle_t* handle);
 
-typedef struct BatchNormBackwardDataDescriptor BatchNormBackwardDataDescriptor;
+typedef struct BatchNormBkwdDescriptor BatchNormBkwdDescriptor;
 
 typedef struct {
     void* X;
@@ -79,20 +79,22 @@ typedef struct {
     void* peer_stats_1;
 } BatchNormBkwdExecutionBuffers;
 
-CudnnFrontendError_t create_batch_norm_backward_data_descriptor(BatchNormBackwardDataDescriptor** desc, 
+CudnnFrontendError_t create_batch_norm_backward_data_descriptor(BatchNormBkwdDescriptor** desc, 
                                                                 CudnnFrontendDataType_t data_type, 
                                                                 const CudnnTensorShapeStride* shape);
 
-CudnnFrontendError_t check_backward_data_graph(BatchNormBackwardDataDescriptor* desc, 
+CudnnFrontendError_t check_backward_data_graph(BatchNormBkwdDescriptor* desc, 
                                                cudnnHandle_t* handle);
 
-CudnnFrontendError_t get_backward_data_workspace_size(BatchNormBackwardDataDescriptor* desc, 
+CudnnFrontendError_t get_backward_data_workspace_size(BatchNormBkwdDescriptor* desc, 
                                                       int64_t* workspace_size);
 
 // void batch_norm_backward_data_desc_debug(BatchNormBackwardDataDescriptor* desc);
 
-CudnnFrontendError_t execute_batch_norm_backward_data(BatchNormBackwardDataDescriptor* desc,
-                                                      BatchNormBkwdExecutionBuffers* buffers);
+CudnnFrontendError_t execute_batch_norm_backward_data(BatchNormBkwdDescriptor* desc,
+                                                      BatchNormBkwdExecutionBuffers* buffers,
+                                                      void* workspace,
+                                                      cudnnHandle_t* handle);
 
 #ifdef __cplusplus
 }

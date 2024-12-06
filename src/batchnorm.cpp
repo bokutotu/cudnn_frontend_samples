@@ -112,7 +112,7 @@ void BatchNormTensorAttributes::debug_print() {
 }
 
 BatchNormTensorAttributes::BatchNormTensorAttributes(CudnnTensorShapeStride input_shape, 
-                                                     fe::graph::Graph &graph, 
+                                                     fe::graph::Graph &graph,
                                                      CudnnFrontendDataType_t type, 
                                                      bool has_running_stats,
                                                      float epsilon,
@@ -253,7 +253,8 @@ BatchNormBkwdTensorAttributes::BatchNormBkwdTensorAttributes(CudnnTensorShapeStr
     std::vector<int64_t> stat_shape = get_stat_shape(input_shape.num_dims, input_shape.dims);
     std::vector<int64_t> stat_strides = get_stat_stride(stat_shape);
 
-    std::vector<int64_t> peer_stats_shape = get_peer_stats_shape(input_shape.num_dims, input_shape.dims);
+    std::vector<int64_t> peer_stats_shape = get_peer_stats_shape(input_shape.num_dims, 
+                                                                 input_shape.dims);
     std::vector<int64_t> peer_stats_strides = get_peer_stats_stride(peer_stats_shape);
 
     DY = graph.tensor(get_tensor_attributes(x_shape, x_strides, type));
@@ -263,49 +264,59 @@ BatchNormBkwdTensorAttributes::BatchNormBkwdTensorAttributes(CudnnTensorShapeStr
     inv_variance = graph.tensor(get_tensor_attributes(stat_shape, stat_strides, type));
     peer_stats_0 = graph.tensor(get_tensor_attributes(peer_stats_shape, peer_stats_strides, type));
     peer_stats_1 = graph.tensor(get_tensor_attributes(peer_stats_shape, peer_stats_strides, type));
-    DX = graph.tensor(get_tensor_attributes(x_shape, x_strides, type));
-    dscale = graph.tensor(get_tensor_attributes(stat_shape, stat_strides, type));
-    dbias = graph.tensor(get_tensor_attributes(stat_shape, stat_strides, type));
+
+    auto dbn_options = fe::graph::Batchnorm_backward_attributes()
+                            .set_saved_mean_and_inv_variance(mean, inv_variance)
+                            .set_peer_stats({peer_stats_0, peer_stats_1});
+
+    auto [DX, dscale, dbias] = graph.batchnorm_backward(DY, X, scale, dbn_options);
+    DX->set_output(true);
+    dscale->set_output(true).set_data_type(fe::DataType_t::FLOAT);
+    dbias->set_output(true).set_data_type(fe::DataType_t::FLOAT);
+
+    this->DX = DX;
+    this->dscale = dscale;
+    this->dbias = dbias;
 }
 
 BatchNormBkwdDescriptor::BatchNormBkwdDescriptor(CudnnTensorShapeStride input_shape, 
-                                                 CudnnFrontendDataType_t type)  
-    : attributes(input_shape, graph, type) {
+                                                 CudnnFrontendDataType_t type) {
     auto data_type = get_data_type(type);
     graph.set_io_data_type(data_type)
         .set_intermediate_data_type(data_type)
         .set_compute_data_type(data_type);
 
+    attributes = BatchNormBkwdTensorAttributes(input_shape, graph, type);
 }
 
 CudnnFrontendError_t BatchNormBkwdDescriptor::check_graph(cudnnHandle_t* handle) {
     auto err = graph.validate();
     if (!err.is_good()) {
-        std::cout << "Graph validation " << std::endl;
+        std::cout << "Graph validation ";
         std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.build_operation_graph(*handle);
     if (!err.is_good()) {
-        std::cout << "Graph build operation graph " << std::endl;
+        std::cout << "Graph build operation graph ";
         std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.create_execution_plans({fe::HeurMode_t::FALLBACK});
     if (!err.is_good()) {
-        std::cout << "Graph create execution plans " << std::endl;
+        std::cout << "Graph create execution plans ";
         std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.check_support(*handle);
     if (!err.is_good()) {
-        std::cout << "Graph check support " << std::endl;
+        std::cout << "Graph check support ";
         std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
     err = graph.build_plans(*handle);
     if (!err.is_good()) {
-        std::cout << "Graph build plans " << std::endl;
+        std::cout << "Graph build plans ";
         std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
