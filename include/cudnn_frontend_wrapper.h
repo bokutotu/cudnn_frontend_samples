@@ -83,10 +83,16 @@ CudnnFrontendError_t create_batch_norm_backward_data_descriptor(BatchNormBackwar
                                                                 CudnnFrontendDataType_t data_type, 
                                                                 const CudnnTensorShapeStride* shape);
 
+CudnnFrontendError_t check_backward_data_graph(BatchNormBackwardDataDescriptor* desc, 
+                                               cudnnHandle_t* handle);
+
+CudnnFrontendError_t get_backward_data_workspace_size(BatchNormBackwardDataDescriptor* desc, 
+                                                      int64_t* workspace_size);
+
+// void batch_norm_backward_data_desc_debug(BatchNormBackwardDataDescriptor* desc);
+
 CudnnFrontendError_t execute_batch_norm_backward_data(BatchNormBackwardDataDescriptor* desc,
                                                       BatchNormBkwdExecutionBuffers* buffers);
-
-typedef struct ConvDescriptor ConvDescriptor;
 
 #ifdef __cplusplus
 }

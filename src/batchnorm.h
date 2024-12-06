@@ -42,12 +42,6 @@ private:
 public:
     fe::graph::Graph get_graph() { return graph; }
 
-    // BatchNormDescriptor(fe::graph::Graph graph, BatchNormTensorAttributes attributes, bool has_running_stats) :
-    //     graph(graph),
-    //     attributes(attributes),
-    //     has_running_stats(has_running_stats)
-    //     {}
-
     BatchNormDescriptor(CudnnTensorShapeStride input_shape_stride, 
                         bool has_running_stats, 
                         CudnnFrontendDataType_t type, 
@@ -66,8 +60,6 @@ public:
 };
 
 struct BatchNormBkwdTensorAttributes {
-    // void debug_print();
-
     BatchNormBkwdTensorAttributes(CudnnTensorShapeStride input_shape, 
                                   fe::graph::Graph &graph, 
                                   CudnnFrontendDataType_t type);
@@ -92,21 +84,12 @@ private:
 public:
     fe::graph::Graph get_graph() { return graph; }
 
-    // BatchNormBkwdDescriptor(fe::graph::Graph graph, BatchNormBkwdTensorAttributes attributes) :
-    //     graph(graph),
-    //     attributes(attributes)
-    //     {}
-
     BatchNormBkwdDescriptor(CudnnTensorShapeStride input_shape_stride, 
                             CudnnFrontendDataType_t type);
 
     CudnnFrontendError_t check_graph(cudnnHandle_t* handle);
 
     CudnnFrontendError_t get_workspace_size(int64_t* workspace_size);
-
-    // void debug_print() {
-    //     attributes.debug_print();
-    // }
 
     CudnnFrontendError_t execute(cudnnHandle_t* handle, BatchNormBkwdExecutionBuffers* buffers, void* workspace);
 };
