@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <iostream>
 #include <sstream>
 
 #include <cuda_runtime.h>

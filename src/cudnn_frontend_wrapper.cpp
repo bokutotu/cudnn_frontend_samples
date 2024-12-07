@@ -66,3 +66,19 @@ CudnnFrontendError_t create_conv_descriptor(ConvDescriptor** desc,
     *desc = new ConvDescriptor(data_type, x_shape, w_shape, y_shape, info);
     return CudnnFrontendError_t::SUCCESS;
 }
+
+CudnnFrontendError_t get_conv_workspace_size(ConvDescriptor* desc, int64_t* workspace_size) {
+    return desc->get_workspace_size(workspace_size);
+}
+
+CudnnFrontendError_t check_conv_graph(ConvDescriptor* desc, cudnnHandle_t* handle) {
+    // return desc->check_graph(handle);
+    return desc->build_and_check_graph(handle, false);
+}
+
+CudnnFrontendError_t execute_conv_forward(ConvDescriptor* desc, 
+                                          ConvBufers* buffers,
+                                          void* workspace,
+                                          cudnnHandle_t* handle) {
+    return desc->execute(handle, buffers, workspace);
+}

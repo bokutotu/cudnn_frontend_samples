@@ -124,6 +124,7 @@ CudnnFrontendError_t get_conv_workspace_size(ConvDescriptor* desc, int64_t* work
 
 CudnnFrontendError_t execute_conv_forward(ConvDescriptor* desc, 
                                           ConvBufers* buffers,
+                                          void* workspace,
                                           cudnnHandle_t* handle);
 
 
