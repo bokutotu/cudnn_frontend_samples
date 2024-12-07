@@ -1,7 +1,9 @@
 #pragma once
 
+#include "i_graph_desc.h"
 #include "../include/cudnn_frontend_wrapper.h"
 #include "cudnn_frontend.h"
+#include "i_graph_desc.h"
 
 namespace fe = cudnn_frontend;
 
@@ -33,15 +35,12 @@ struct BatchNormTensorAttributes {
     std::shared_ptr<fe::graph::Tensor_attributes> inv_variance;
 };
 
-struct BatchNormDescriptor {
+struct BatchNormDescriptor : public IGraphDescriptor {
 private:
-    fe::graph::Graph graph;
     BatchNormTensorAttributes attributes;
     bool has_running_stats;
 
 public:
-    fe::graph::Graph get_graph() { return graph; }
-
     BatchNormDescriptor(CudnnTensorShapeStride input_shape_stride, 
                         bool has_running_stats, 
                         CudnnFrontendDataType_t type, 
@@ -58,6 +57,7 @@ public:
 
     CudnnFrontendError_t execute(cudnnHandle_t* handle, BatchNormExecutionBuffers* buffers, void* workspace);
 };
+
 
 struct BatchNormBkwdTensorAttributes {
     BatchNormBkwdTensorAttributes() = default;
@@ -78,14 +78,11 @@ struct BatchNormBkwdTensorAttributes {
     std::shared_ptr<fe::graph::Tensor_attributes> dbias;
 };
 
-struct BatchNormBkwdDescriptor {
+struct BatchNormBkwdDescriptor : public IGraphDescriptor {
 private:
-    fe::graph::Graph graph;
     BatchNormBkwdTensorAttributes attributes;
 
 public:
-    fe::graph::Graph get_graph() { return graph; }
-
     BatchNormBkwdDescriptor(CudnnTensorShapeStride input_shape_stride, 
                             CudnnFrontendDataType_t type);
 

@@ -1,9 +1,8 @@
-#include "cudnn_frontend.h"
 #include "batchnorm.h"
 #include "utils.h"
 #include <vector>
 
-std::vector<int64_t> get_stat_shape(size_t n, int64_t dims[8]) {
+static std::vector<int64_t> get_stat_shape(size_t n, int64_t dims[8]) {
     std::vector<int64_t> shape = from_shape(n, dims);
     if (shape.size() != 4) {
         throw std::runtime_error("Invalid shape for stats");
@@ -14,7 +13,7 @@ std::vector<int64_t> get_stat_shape(size_t n, int64_t dims[8]) {
     return shape;
 }
 
-std::vector<int64_t> get_stat_stride(std::vector<int64_t> shape) {
+static std::vector<int64_t> get_stat_stride(std::vector<int64_t> shape) {
     if (shape.size() != 4) {
         throw std::runtime_error("Invalid shape for scale/bias");
     }
@@ -26,7 +25,7 @@ std::vector<int64_t> get_stat_stride(std::vector<int64_t> shape) {
     return stride;
 }
 
-std::vector<int64_t> get_peer_stats_shape(size_t n, int64_t dims[8]) {
+static std::vector<int64_t> get_peer_stats_shape(size_t n, int64_t dims[8]) {
     std::vector<int64_t> shape = from_shape(n, dims);
     if (shape.size() != 4) {
         throw std::runtime_error("Invalid shape for peer stats");
@@ -38,7 +37,7 @@ std::vector<int64_t> get_peer_stats_shape(size_t n, int64_t dims[8]) {
     return shape;
 }
 
-std::vector<int64_t> get_peer_stats_stride(std::vector<int64_t> shape) {
+static std::vector<int64_t> get_peer_stats_stride(std::vector<int64_t> shape) {
     if (shape.size() != 4) {
         throw std::runtime_error("Invalid shape for peer stats");
     }
@@ -50,7 +49,7 @@ std::vector<int64_t> get_peer_stats_stride(std::vector<int64_t> shape) {
     return stride;
 }
 
-std::string type_to_string(cudnn_frontend::DataType_t type) {
+static std::string type_to_string(cudnn_frontend::DataType_t type) {
     switch (type) {
         case cudnn_frontend::DataType_t::HALF:
             return "half";
@@ -63,7 +62,7 @@ std::string type_to_string(cudnn_frontend::DataType_t type) {
     }
 }
 
-void debug_print_(std::shared_ptr<fe::graph::Tensor_attributes> tensor) {
+static void debug_print_(std::shared_ptr<fe::graph::Tensor_attributes> tensor) {
     std::cout << "Tensor: " << tensor->get_name() << std::endl;
     std::cout << "Shape: ";
     for (auto dim : tensor->get_dim()) {
@@ -83,7 +82,7 @@ void debug_print_(std::shared_ptr<fe::graph::Tensor_attributes> tensor) {
 void BatchNormTensorAttributes::debug_print() {
     std::cout << "X ";
     debug_print_(X);
-    std::cout << "prev_running_meanv ";
+    std::cout << "prev_running_mean ";
     debug_print_(prev_running_mean);
     std::cout << "prev_running_var ";
     debug_print_(prev_running_var);
@@ -115,8 +114,8 @@ BatchNormTensorAttributes::BatchNormTensorAttributes(CudnnTensorShapeStride inpu
                                                      fe::graph::Graph &graph,
                                                      CudnnFrontendDataType_t type, 
                                                      bool has_running_stats,
-                                                     float epsilon,
-                                                     float momentum) {
+                                                     float epsilon_val,
+                                                     float momentum_val) {
     std::vector<int64_t> x_shape = from_shape(input_shape.num_dims, input_shape.dims);
     std::vector<int64_t> x_strides = from_shape(input_shape.num_dims, input_shape.strides);
 
@@ -133,8 +132,8 @@ BatchNormTensorAttributes::BatchNormTensorAttributes(CudnnTensorShapeStride inpu
     bias = graph.tensor(get_tensor_attributes(stat_shape, stat_strides, type));
     peer_stats_0 = graph.tensor(get_tensor_attributes(peer_stats_shape, peer_stats_strides, type));
     peer_stats_1 = graph.tensor(get_tensor_attributes(peer_stats_shape, peer_stats_strides, type));
-    this->epsilon = graph.tensor(fe::graph::Tensor_attributes(epsilon));
-    this->momentum = graph.tensor(fe::graph::Tensor_attributes(momentum));
+    this->epsilon = graph.tensor(fe::graph::Tensor_attributes(epsilon_val));
+    this->momentum = graph.tensor(fe::graph::Tensor_attributes(momentum_val));
     auto batchnorm_options = 
         fe::graph::Batchnorm_attributes()
             .set_epsilon(this->epsilon)
@@ -175,45 +174,11 @@ BatchNormDescriptor::BatchNormDescriptor(CudnnTensorShapeStride input_shape_stri
 }
 
 CudnnFrontendError_t BatchNormDescriptor::check_graph(cudnnHandle_t* handle) {
-    auto err = graph.validate();
-    if (!err.is_good()) {
-        std::cout << "Graph validation " << std::endl;
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.build_operation_graph(*handle);
-    if (!err.is_good()) {
-        std::cout << "Graph build operation graph " << std::endl;
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.create_execution_plans({fe::HeurMode_t::FALLBACK});
-    if (!err.is_good()) {
-        std::cout << "Graph create execution plans " << std::endl;
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.check_support(*handle);
-    if (!err.is_good()) {
-        std::cout << "Graph check support " << std::endl;
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.build_plans(*handle);
-    if (!err.is_good()) {
-        std::cout << "Graph build plans " << std::endl;
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    return CudnnFrontendError_t::SUCCESS;
+    return build_and_check_graph(handle, false);
 }
 
 CudnnFrontendError_t BatchNormDescriptor::get_workspace_size(int64_t* workspace_size) {
-    auto err = graph.get_workspace_size(*workspace_size);
-    if (!err.is_good()) {
-        return CudnnFrontendError_t::FAILURE;
-    }
-    return CudnnFrontendError_t::SUCCESS;
+    return IGraphDescriptor::get_workspace_size(workspace_size);
 }
 
 CudnnFrontendError_t BatchNormDescriptor::execute(cudnnHandle_t* handle, 
@@ -236,12 +201,7 @@ CudnnFrontendError_t BatchNormDescriptor::execute(cudnnHandle_t* handle,
         variant_pack[attributes.next_running_var]  = buffers->next_running_var;
     }
 
-    auto err = graph.execute(*handle, variant_pack, workspace);
-    if (!err.is_good()) {
-        std::cout << "Graph execute failed" << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    return CudnnFrontendError_t::SUCCESS;
+    return execute_graph(handle, variant_pack, workspace);
 }
 
 BatchNormBkwdTensorAttributes::BatchNormBkwdTensorAttributes(CudnnTensorShapeStride input_shape, 
@@ -279,56 +239,22 @@ BatchNormBkwdTensorAttributes::BatchNormBkwdTensorAttributes(CudnnTensorShapeStr
     this->dbias = dbias;
 }
 
-BatchNormBkwdDescriptor::BatchNormBkwdDescriptor(CudnnTensorShapeStride input_shape, 
+BatchNormBkwdDescriptor::BatchNormBkwdDescriptor(CudnnTensorShapeStride input_shape_stride, 
                                                  CudnnFrontendDataType_t type) {
     auto data_type = get_data_type(type);
     graph.set_io_data_type(data_type)
-        .set_intermediate_data_type(data_type)
-        .set_compute_data_type(data_type);
+         .set_intermediate_data_type(data_type)
+         .set_compute_data_type(data_type);
 
-    attributes = BatchNormBkwdTensorAttributes(input_shape, graph, type);
+    attributes = BatchNormBkwdTensorAttributes(input_shape_stride, graph, type);
 }
 
 CudnnFrontendError_t BatchNormBkwdDescriptor::check_graph(cudnnHandle_t* handle) {
-    auto err = graph.validate();
-    if (!err.is_good()) {
-        std::cout << "Graph validation ";
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.build_operation_graph(*handle);
-    if (!err.is_good()) {
-        std::cout << "Graph build operation graph ";
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.create_execution_plans({fe::HeurMode_t::FALLBACK});
-    if (!err.is_good()) {
-        std::cout << "Graph create execution plans ";
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.check_support(*handle);
-    if (!err.is_good()) {
-        std::cout << "Graph check support ";
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    err = graph.build_plans(*handle, fe::BuildPlanPolicy_t::ALL);
-    if (!err.is_good()) {
-        std::cout << "Graph build plans ";
-        std::cout << err.get_message() << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    return CudnnFrontendError_t::SUCCESS;
+    return build_and_check_graph(handle, true);
 }
 
 CudnnFrontendError_t BatchNormBkwdDescriptor::get_workspace_size(int64_t* workspace_size) {
-    auto err = graph.get_workspace_size(*workspace_size);
-    if (!err.is_good()) {
-        return CudnnFrontendError_t::FAILURE;
-    }
-    return CudnnFrontendError_t::SUCCESS;
+    return IGraphDescriptor::get_workspace_size(workspace_size);
 }
 
 CudnnFrontendError_t BatchNormBkwdDescriptor::execute(cudnnHandle_t* handle, 
@@ -346,11 +272,5 @@ CudnnFrontendError_t BatchNormBkwdDescriptor::execute(cudnnHandle_t* handle,
         {attributes.peer_stats_0, buffers->peer_stats_0},
         {attributes.peer_stats_1, buffers->peer_stats_1}};
 
-    auto err = graph.execute(*handle, variant_pack, workspace);
-    std::cout << "Graph execute " << err.get_message() << std::endl;
-    if (!err.is_good()) {
-        std::cout << "Graph execute failed" << std::endl;
-        return CudnnFrontendError_t::FAILURE;
-    }
-    return CudnnFrontendError_t::SUCCESS;
+    return execute_graph(handle, variant_pack, workspace);
 }
