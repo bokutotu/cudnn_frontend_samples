@@ -10,6 +10,7 @@ namespace fe = cudnn_frontend;
 class IGraphDescriptor {
 protected:
     fe::graph::Graph graph;
+    std::vector<fe::HeurMode_t> heur_mode = {fe::HeurMode_t::FALLBACK};
 
 public:
     virtual ~IGraphDescriptor() = default;
@@ -21,7 +22,7 @@ public:
         err = graph.build_operation_graph(*handle);
         if (!err.is_good()) { return handle_error("Graph build operation graph", err); }
 
-        err = graph.create_execution_plans({fe::HeurMode_t::FALLBACK});
+        err = graph.create_execution_plans(heur_mode);
         if (!err.is_good()) { return handle_error("Graph create execution plans", err); }
 
         err = graph.check_support(*handle);

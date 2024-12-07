@@ -96,6 +96,39 @@ CudnnFrontendError_t execute_batch_norm_backward_data(BatchNormBkwdDescriptor* d
                                                       void* workspace,
                                                       cudnnHandle_t* handle);
 
+typedef struct {
+    void* X;
+    void* filter;
+    void* Y;
+} ConvBufers;
+
+// padding, stride, dilation infomation, this struct use for 2d and 1d.
+// please name of this struct
+typedef struct {
+    int64_t padding[2];
+    int64_t stride[2];
+    int64_t dilation[2];
+    int64_t num_dims;
+} ConvInfo;
+
+typedef struct ConvDescriptor ConvDescriptor;
+
+CudnnFrontendError_t create_conv_descriptor(ConvDescriptor** desc, 
+                                            CudnnFrontendDataType_t data_type, 
+                                            const CudnnTensorShapeStride* x_shape,
+                                            const CudnnTensorShapeStride* w_shape,
+                                            const CudnnTensorShapeStride* y_shape,
+                                            const ConvInfo* info);
+
+CudnnFrontendError_t check_conv_graph(ConvDescriptor* desc, cudnnHandle_t* handle);
+
+CudnnFrontendError_t get_conv_workspace_size(ConvDescriptor* desc, int64_t* workspace_size);
+
+CudnnFrontendError_t execute_conv_forward(ConvDescriptor* desc, 
+                                          ConvBufers* buffers,
+                                          cudnnHandle_t* handle);
+
+
 #ifdef __cplusplus
 }
 #endif
