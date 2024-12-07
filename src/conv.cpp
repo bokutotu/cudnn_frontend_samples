@@ -20,12 +20,12 @@ ConvAttributes::ConvAttributes(CudnnTensorShapeStride* x_shape,
     auto data_type = get_data_type(type);
 
     X = graph.tensor(get_tensor_attributes(from_shape(x_shape->num_dims, x_shape->dims), 
-                                                from_shape(x_shape->num_dims, x_shape->strides), 
-                                                type));
+                                           from_shape(x_shape->num_dims, x_shape->strides), 
+                                           type));
 
     W = graph.tensor(get_tensor_attributes(from_shape(w_shape->num_dims, w_shape->dims),
-                                                from_shape(w_shape->num_dims, w_shape->strides), 
-                                                type));
+                                           from_shape(w_shape->num_dims, w_shape->strides), 
+                                           type));
 
     auto [padding, stride, dilation] = get_conv_info(info);
 
@@ -38,7 +38,7 @@ ConvAttributes::ConvAttributes(CudnnTensorShapeStride* x_shape,
     Y->set_output(true).set_stride(from_shape(y_shape->num_dims, y_shape->strides));
 }
 
-ConvGraph::ConvGraph(CudnnFrontendDataType_t type,
+ConvDescriptor::ConvDescriptor(CudnnFrontendDataType_t type,
                      CudnnTensorShapeStride* x_shape, 
                      CudnnTensorShapeStride* w_shape, 
                      CudnnTensorShapeStride* y_shape, 
@@ -51,7 +51,7 @@ ConvGraph::ConvGraph(CudnnFrontendDataType_t type,
     attributes = ConvAttributes(x_shape, w_shape, y_shape, graph, type, info);
 }
 
-CudnnFrontendError_t ConvGraph::execute(cudnnHandle_t* handle, ConvBufers* buffers, void* workspace) {
+CudnnFrontendError_t ConvDescriptor::execute(cudnnHandle_t* handle, ConvBufers* buffers, void* workspace) {
     std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*> variant_pack = {
         {attributes.X, buffers->X},
         {attributes.W, buffers->filter},

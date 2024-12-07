@@ -102,8 +102,6 @@ typedef struct {
     void* Y;
 } ConvBufers;
 
-// padding, stride, dilation infomation, this struct use for 2d and 1d.
-// please name of this struct
 typedef struct {
     int64_t padding[2];
     int64_t stride[2];
@@ -115,10 +113,10 @@ typedef struct ConvDescriptor ConvDescriptor;
 
 CudnnFrontendError_t create_conv_descriptor(ConvDescriptor** desc, 
                                             CudnnFrontendDataType_t data_type, 
-                                            const CudnnTensorShapeStride* x_shape,
-                                            const CudnnTensorShapeStride* w_shape,
-                                            const CudnnTensorShapeStride* y_shape,
-                                            const ConvInfo* info);
+                                            CudnnTensorShapeStride* x_shape,
+                                            CudnnTensorShapeStride* w_shape,
+                                            CudnnTensorShapeStride* y_shape,
+                                            ConvInfo* info);
 
 CudnnFrontendError_t check_conv_graph(ConvDescriptor* desc, cudnnHandle_t* handle);
 

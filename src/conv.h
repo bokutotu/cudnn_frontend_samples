@@ -22,7 +22,7 @@ public:
                    ConvInfo* info);
 };
 
-struct ConvGraph : public IGraphDescriptor {
+struct ConvDescriptor : public IGraphDescriptor {
 protected:
     fe::graph::Graph graph;
     std::vector<fe::HeurMode_t> heur_mode = {fe::HeurMode_t::A};
@@ -31,7 +31,7 @@ private:
     ConvAttributes attributes;
 
 public:
-    ConvGraph(CudnnFrontendDataType_t type, 
+    ConvDescriptor(CudnnFrontendDataType_t type, 
               CudnnTensorShapeStride* x_shape, 
               CudnnTensorShapeStride* w_shape, 
               CudnnTensorShapeStride* y_shape, 
