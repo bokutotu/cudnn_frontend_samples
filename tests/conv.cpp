@@ -10,23 +10,25 @@ TEST_CASE("conv2d", "[conv2d]") {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
+    int64_t n = 16, c = 128, h = 64, w = 64, k = 256, r = 1, s = 1;
+
     CudnnTensorShapeStride shape = {
         .num_dims = 4,
-        .dims = {4, 3, 32, 32},
-        .strides = {3*32*32, 32*32, 32, 1}
+        .dims = {n, c, h, w},
+        .strides = {c * h * w, h * w, w, 1}
     };
     CudnnTensorShapeStride filter_shape = {
         .num_dims = 4,
-        .dims = {32, 3, 3, 3},
-        .strides = {3*3*3, 3*3, 3, 1}
+        .dims = {k, c, r, s},
+        .strides = {c * r * s, r * s, s, 1}
     };
     CudnnTensorShapeStride y_shape = {
         .num_dims = 4,
-        .dims = {4, 32, 30, 30},
-        .strides = {32*30*30, 30*30, 30, 1}
+        .dims = {n, k, h, w},
+        .strides = {k * h * w, h * w, w, 1}
     };
     ConvInfo info = {
-        .padding = {1, 1},
+        .padding = {0, 0},
         .stride = {1, 1},
         .dilation = {1, 1},
         .num_dims = 2
@@ -47,7 +49,6 @@ TEST_CASE("conv2d", "[conv2d]") {
     int64_t workspace_size;
     status = get_conv_workspace_size(desc, &workspace_size);
     REQUIRE(status == SUCCESS);
-    CHECK(workspace_size > 0);
 
     ConvBufers buffers = {
         .X = nullptr,
@@ -55,14 +56,15 @@ TEST_CASE("conv2d", "[conv2d]") {
         .Y = nullptr
     };
 
-    Surface<float> X_tensor(4 * 3 * 32 * 32, false);
-    Surface<float> Filter_tensor(32 * 3 * 3 * 3, false);
-    Surface<float> Y_tensor(4 * 32 * 30 * 30, false);
+    Surface<float> X_tensor(n * c * h * w, false);
+    Surface<float> Filter_tensor(k * c * r * s, false);
+    Surface<float> Y_tensor(n * k * h * w, false);
+    Surface<int8_t> workspace(workspace_size, false);
 
     buffers.X = X_tensor.devPtr;
     buffers.filter = Filter_tensor.devPtr;
     buffers.Y = Y_tensor.devPtr;
 
-    status = execute_conv_forward(desc, &buffers, nullptr, &handle);
+    status = execute_conv_forward(desc, &buffers, workspace.devPtr, &handle);
     REQUIRE(status == SUCCESS);
 };

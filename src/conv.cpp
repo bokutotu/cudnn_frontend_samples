@@ -35,7 +35,7 @@ ConvAttributes::ConvAttributes(CudnnTensorShapeStride* x_shape,
                             .set_dilation(dilation);
 
     Y = graph.conv_fprop(X, W, conv_options);
-    Y->set_output(true).set_stride(from_shape(y_shape->num_dims, y_shape->strides));
+    Y->set_output(true);
 }
 
 ConvDescriptor::ConvDescriptor(CudnnFrontendDataType_t type,
@@ -45,10 +45,10 @@ ConvDescriptor::ConvDescriptor(CudnnFrontendDataType_t type,
                      ConvInfo* info) {
     fe::graph::Graph graph;
     graph.set_io_data_type(get_data_type(type))
-         .set_intermediate_data_type(get_data_type(type))
          .set_compute_data_type(get_data_type(type));
 
     attributes = ConvAttributes(x_shape, w_shape, y_shape, graph, type, info);
+    this->graph = graph;
 }
 
 CudnnFrontendError_t ConvDescriptor::execute(cudnnHandle_t* handle, ConvBufers* buffers, void* workspace) {

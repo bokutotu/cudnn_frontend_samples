@@ -23,10 +23,6 @@ public:
 };
 
 struct ConvDescriptor : public IGraphDescriptor {
-protected:
-    fe::graph::Graph graph;
-    std::vector<fe::HeurMode_t> heur_mode = {fe::HeurMode_t::A};
-
 private:
     ConvAttributes attributes;
 

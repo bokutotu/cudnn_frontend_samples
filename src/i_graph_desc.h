@@ -10,7 +10,7 @@ namespace fe = cudnn_frontend;
 class IGraphDescriptor {
 protected:
     fe::graph::Graph graph;
-    std::vector<fe::HeurMode_t> heur_mode = {fe::HeurMode_t::FALLBACK};
+    std::vector<fe::HeurMode_t> heur_mode = {fe::HeurMode_t::A};
 
 public:
     virtual ~IGraphDescriptor() = default;
