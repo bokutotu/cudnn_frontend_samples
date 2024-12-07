@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include "helpers.h"
 
-TEST_CASE("Example test case", "[batchnorm2d]") {
+TEST_CASE("BatchNorm2d", "[batchnorm2d]") {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
@@ -59,7 +59,6 @@ TEST_CASE("Example test case", "[batchnorm2d]") {
     Surface<float> Next_running_var_tensor(32, false);
     Surface<float> Scale_tensor(32, false);
     Surface<float> Bias_tensor(32, false);
-    Surface<float> A_tensor(4 * 32 * 16 * 16, false);
     Surface<float> Y_tensor(4 * 32 * 16 * 16, false);
     Surface<float> Peer_stats_0_tensor(2 * 4 * 32, false, true);
     Surface<float> Peer_stats_1_tensor(2 * 4 * 32, false);
@@ -84,7 +83,7 @@ TEST_CASE("Example test case", "[batchnorm2d]") {
     REQUIRE(status == SUCCESS);
 };
 
-TEST_CASE("Example test case 2", "[batchnorm2d_bkwd]") {
+TEST_CASE("BatchNorm2dBkwd", "[batchnorm2d_bkwd]") {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
@@ -114,28 +113,37 @@ TEST_CASE("Example test case 2", "[batchnorm2d_bkwd]") {
         .mean = nullptr,
         .inv_variance = nullptr,
         .dscale = nullptr,
-        .dbias = nullptr
+        .dbias = nullptr,
+        .DX = nullptr,
+        .peer_stats_0 = nullptr,
+        .peer_stats_1 = nullptr
     };
 
     Surface<float> X_tensor(4 * 32 * 16 * 16, false);
     Surface<float> DY_tensor(4 * 32 * 16 * 16, false);
     Surface<float> Scale_tensor(32, false);
     Surface<float> Mean_tensor(32, false);
-    Surface<float> Var_tensor(32, false);
-    Surface<float> DS_tensor(32, false);
-    Surface<float> DB_tensor(32, false);
+    Surface<float> Inv_variance_tensor(32, false);
+    Surface<float> Dscale_tensor(32, false);
+    Surface<float> Dbias_tensor(32, false);
+    Surface<float> DX_tensor(4 * 32 * 16 * 16, false);
+    Surface<float> Peer_stats_0_tensor(2 * 4 * 32, false, true);
+    Surface<float> Peer_stats_1_tensor(2 * 4 * 32, false);
 
     buffers.X = X_tensor.devPtr;
     buffers.DY = DY_tensor.devPtr;
     buffers.scale = Scale_tensor.devPtr;
     buffers.mean = Mean_tensor.devPtr;
-    buffers.inv_variance = Var_tensor.devPtr;
-    buffers.dscale = DS_tensor.devPtr;
-    buffers.dbias = DB_tensor.devPtr;
+    buffers.inv_variance = Inv_variance_tensor.devPtr;
+    buffers.dscale = Dscale_tensor.devPtr;
+    buffers.dbias = Dbias_tensor.devPtr;
+    buffers.DX = DX_tensor.devPtr;
+    buffers.peer_stats_0 = Peer_stats_0_tensor.devPtr;
+    buffers.peer_stats_1 = Peer_stats_1_tensor.devPtr;
 
     void* workspace = nullptr;
     cudaMalloc(&workspace, workspace_size);
-
+    cudaDeviceSynchronize();
     status = execute_batch_norm_backward_data(desc, &buffers, workspace, &handle);
     REQUIRE(status == SUCCESS);
 }

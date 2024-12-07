@@ -314,7 +314,7 @@ CudnnFrontendError_t BatchNormBkwdDescriptor::check_graph(cudnnHandle_t* handle)
         std::cout << err.get_message() << std::endl;
         return CudnnFrontendError_t::FAILURE;
     }
-    err = graph.build_plans(*handle);
+    err = graph.build_plans(*handle, fe::BuildPlanPolicy_t::ALL);
     if (!err.is_good()) {
         std::cout << "Graph build plans ";
         std::cout << err.get_message() << std::endl;
@@ -335,18 +335,19 @@ CudnnFrontendError_t BatchNormBkwdDescriptor::execute(cudnnHandle_t* handle,
                                                       BatchNormBkwdExecutionBuffers* buffers,
                                                       void* workspace) {
     std::unordered_map<std::shared_ptr<fe::graph::Tensor_attributes>, void*> variant_pack = {
-        {attributes.DY, buffers->DY},
         {attributes.X, buffers->X},
-        {attributes.scale, buffers->scale},
+        {attributes.DY, buffers->DY},
         {attributes.mean, buffers->mean},
         {attributes.inv_variance, buffers->inv_variance},
+        {attributes.scale, buffers->scale},
         {attributes.dscale, buffers->dscale},
         {attributes.dbias, buffers->dbias},
         {attributes.DX, buffers->DX},
         {attributes.peer_stats_0, buffers->peer_stats_0},
         {attributes.peer_stats_1, buffers->peer_stats_1}};
 
-    auto err = graph.execute(*handle, variant_pack, nullptr);
+    auto err = graph.execute(*handle, variant_pack, workspace);
+    std::cout << "Graph execute " << err.get_message() << std::endl;
     if (!err.is_good()) {
         std::cout << "Graph execute failed" << std::endl;
         return CudnnFrontendError_t::FAILURE;
