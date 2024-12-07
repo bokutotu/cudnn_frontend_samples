@@ -72,7 +72,6 @@ CudnnFrontendError_t get_conv_workspace_size(ConvDescriptor* desc, int64_t* work
 }
 
 CudnnFrontendError_t check_conv_graph(ConvDescriptor* desc, cudnnHandle_t* handle) {
-    // return desc->check_graph(handle);
     return desc->build_and_check_graph(handle, false);
 }
 
