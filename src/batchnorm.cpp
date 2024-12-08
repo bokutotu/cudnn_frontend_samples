@@ -2,53 +2,6 @@
 #include "utils.h"
 #include <vector>
 
-static std::vector<int64_t> get_stat_shape(size_t n, int64_t dims[8]) {
-    std::vector<int64_t> shape = from_shape(n, dims);
-    if (shape.size() != 4) {
-        throw std::runtime_error("Invalid shape for stats");
-    }
-    shape[0] = 1;
-    shape[2] = 1;
-    shape[3] = 1;
-    return shape;
-}
-
-static std::vector<int64_t> get_stat_stride(std::vector<int64_t> shape) {
-    if (shape.size() != 4) {
-        throw std::runtime_error("Invalid shape for scale/bias");
-    }
-    std::vector<int64_t> stride(4, 1);
-    stride[0] = shape[1];
-    stride[1] = 1;
-    stride[2] = shape[1];
-    stride[3] = shape[1];
-    return stride;
-}
-
-static std::vector<int64_t> get_peer_stats_shape(size_t n, int64_t dims[8]) {
-    std::vector<int64_t> shape = from_shape(n, dims);
-    if (shape.size() != 4) {
-        throw std::runtime_error("Invalid shape for peer stats");
-    }
-    shape[0] = 2;
-    shape[1] *= 4;
-    shape[2] = 1;
-    shape[3] = 1;
-    return shape;
-}
-
-static std::vector<int64_t> get_peer_stats_stride(std::vector<int64_t> shape) {
-    if (shape.size() != 4) {
-        throw std::runtime_error("Invalid shape for peer stats");
-    }
-    std::vector<int64_t> stride(4, 1);
-    stride[0] = shape[1];
-    stride[1] = 1;
-    stride[2] = shape[1];
-    stride[3] = shape[1];
-    return stride;
-}
-
 static std::string type_to_string(cudnn_frontend::DataType_t type) {
     switch (type) {
         case cudnn_frontend::DataType_t::HALF:
@@ -61,6 +14,76 @@ static std::string type_to_string(cudnn_frontend::DataType_t type) {
             return "unknown";
     }
 }
+
+static std::vector<int64_t> get_stat_shape(size_t n, int64_t dims[8]) {
+    std::vector<int64_t> shape = from_shape(n, dims);
+    if (shape.size() == 2) {
+        shape[0] = 1;
+        return shape;
+    } else if (shape.size() == 4) {
+        shape[0] = 1;
+        shape[2] = 1;
+        shape[3] = 1;
+        return shape; 
+    } else {
+        throw std::runtime_error("Invalid shape for stats (only supports BN1D or BN2D)");
+    }
+}
+
+static std::vector<int64_t> get_stat_stride(std::vector<int64_t> shape) {
+    if (shape.size() == 2) {
+        std::vector<int64_t> stride(2, 1);
+        stride[0] = shape[1];
+        stride[1] = 1;
+        return stride;
+    } else if (shape.size() == 4) {
+        std::vector<int64_t> stride(4, 1);
+        stride[0] = shape[1];
+        stride[1] = 1;
+        stride[2] = shape[1];
+        stride[3] = shape[1];
+        return stride;
+    } else {
+        throw std::runtime_error("Invalid shape for scale/bias (only supports BN1D or BN2D)");
+    }
+}
+
+static std::vector<int64_t> get_peer_stats_shape(size_t n, int64_t dims[8]) {
+    std::vector<int64_t> shape = from_shape(n, dims);
+    if (shape.size() == 2) {
+        std::vector<int64_t> peer_shape(2, 1);
+        peer_shape[0] = 2;
+        peer_shape[1] = shape[1] * 4;
+        return peer_shape;
+    } else if (shape.size() == 4) {
+        shape[0] = 2;
+        shape[1] *= 4;
+        shape[2] = 1;
+        shape[3] = 1;
+        return shape; 
+    } else {
+        throw std::runtime_error("Invalid shape for peer stats (only supports BN1D or BN2D)");
+    }
+}
+
+static std::vector<int64_t> get_peer_stats_stride(std::vector<int64_t> shape) {
+    if (shape.size() == 2) {
+        std::vector<int64_t> stride(2, 1);
+        stride[0] = shape[1];
+        stride[1] = 1;
+        return stride;
+    } else if (shape.size() == 4) {
+        std::vector<int64_t> stride(4, 1);
+        stride[0] = shape[1];
+        stride[1] = 1;
+        stride[2] = shape[1];
+        stride[3] = shape[1];
+        return stride;
+    } else {
+        throw std::runtime_error("Invalid shape for peer stats (only supports BN1D or BN2D)");
+    }
+}
+
 
 static void debug_print_(std::shared_ptr<fe::graph::Tensor_attributes> tensor) {
     std::cout << "Tensor: " << tensor->get_name() << std::endl;

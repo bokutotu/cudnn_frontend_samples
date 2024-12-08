@@ -201,31 +201,23 @@ TEST_CASE("conv1d forward", "[conv1d_forward]") {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
-    // Conv1Dパラメータ
     int64_t n = 16, c = 128, w = 64, k = 256, r = 3; 
-    // 入力形状: N, C, W
     CudnnTensorShapeStride x_shape = {
         .num_dims = 3,
         .dims = {n, c, w},
         .strides = {c*w, w, 1}
     };
-    // フィルタ形状: K, C, R
     CudnnTensorShapeStride w_shape = {
         .num_dims = 3,
         .dims = {k, c, r},
         .strides = {c*r, r, 1}
     };
-    // 出力形状: N, K, W_out
-    // パディング、ストライド、ディレーション設定  
-    // W_out = (W + 2*pad - dil*(R-1)-1)/stride + 1
-    // 今回pad=1, stride=1, dilation=1とし、W_out = 64
     ConvInfo info = {
         .padding = {1},   
         .stride = {1},
         .dilation = {1},
         .num_dims = 1
     };
-    // 出力はN, K, W(同じ64と仮定)
     CudnnTensorShapeStride y_shape = {
         .num_dims = 3,
         .dims = {n, k, w},
@@ -249,7 +241,6 @@ TEST_CASE("conv1d forward", "[conv1d_forward]") {
     status = get_conv_workspace_size(desc, &workspace_size);
     REQUIRE(status == SUCCESS);
 
-    // バッファ確保
     ConvBufers buffers = {
         .X = nullptr,
         .filter = nullptr,
@@ -283,19 +274,16 @@ TEST_CASE("conv1d backward data", "[conv1d_backward_data]") {
         .num_dims = 1
     };
 
-    // DY: N, K, W_out (W_out = 64)
     CudnnTensorShapeStride dy_shape = {
         .num_dims = 3,
         .dims = {n, k, w},
         .strides = {k*w, w, 1}
     };
-    // Filter: K, C, R
     CudnnTensorShapeStride filter_shape = {
         .num_dims = 3,
         .dims = {k, c, r},
         .strides = {c*r, r, 1}
     };
-    // DX: N, C, W
     CudnnTensorShapeStride dx_shape = {
         .num_dims = 3,
         .dims = {n, c, w},
@@ -352,19 +340,16 @@ TEST_CASE("conv1d backward filter", "[conv1d_backward_filter]") {
         .num_dims = 1
     };
 
-    // X: N, C, W
     CudnnTensorShapeStride x_shape = {
         .num_dims = 3,
         .dims = {n, c, w},
         .strides = {c*w, w, 1}
     };
-    // DY: N, K, W_out (W_out = 64)
     CudnnTensorShapeStride dy_shape = {
         .num_dims = 3,
         .dims = {n, k, w},
         .strides = {k*w, w, 1}
     };
-    // DW: K, C, R
     CudnnTensorShapeStride dw_shape = {
         .num_dims = 3,
         .dims = {k, c, r},
