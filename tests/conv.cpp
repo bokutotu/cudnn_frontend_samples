@@ -136,7 +136,7 @@ TEST_CASE("conv2d backward fileter", "[conv2d_backward_fileter]") {
     cudnnHandle_t handle;
     cudnnCreate(&handle);
 
-    int64_t n = 16, c = 128, h = 64, w = 64, k = 256, r = 1, s = 1;
+    int64_t n = 16, c = 128, h = 64, w = 64, k = 256, r = 3, s = 3;
 
     CudnnTensorShapeStride x_shape = {
         .num_dims = 4,
@@ -154,7 +154,7 @@ TEST_CASE("conv2d backward fileter", "[conv2d_backward_fileter]") {
         .strides = {c * r * s, r * s, s, 1}
     };
     ConvInfo info = {
-        .padding = {0, 0},
+        .padding = {1, 1},
         .stride = {1, 1},
         .dilation = {1, 1},
         .num_dims = 2

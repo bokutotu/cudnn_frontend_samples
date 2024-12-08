@@ -136,8 +136,10 @@ ConvBkwdFilterAttributes::ConvBkwdFilterAttributes(CudnnTensorShapeStride* x_sha
                             .set_stride(stride)
                             .set_dilation(dilation);
 
-    DW = graph.conv_wgrad(X, DY, conv_options);
-    DW->set_output(true).set_dim(from_shape(dw_shape->num_dims, dw_shape->dims));
+    DW = graph.conv_wgrad(DY, X, conv_options);
+    DW->set_output(true)
+        .set_dim(from_shape(dw_shape->num_dims, dw_shape->dims))
+        .set_stride(from_shape(dw_shape->num_dims, dw_shape->strides));
 }
 
 ConvBkwdFilterDescriptor::ConvBkwdFilterDescriptor(CudnnFrontendDataType_t type,
