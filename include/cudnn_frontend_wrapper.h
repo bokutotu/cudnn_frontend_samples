@@ -128,6 +128,58 @@ CudnnFrontendError_t execute_conv_forward(ConvDescriptor* desc,
                                           cudnnHandle_t* handle);
 
 
+typedef struct {
+    void* DY;
+    void* filter;
+    void* DX;
+} ConvBkwdDataBuffers;
+
+typedef struct ConvBkwdDataDescriptor ConvBkwdDataDescriptor;
+
+CudnnFrontendError_t create_conv_backward_data_descriptor(ConvBkwdDataDescriptor** desc, 
+                                                          CudnnFrontendDataType_t data_type, 
+                                                          CudnnTensorShapeStride* dy_shape,
+                                                          CudnnTensorShapeStride* w_shape,
+                                                          CudnnTensorShapeStride* dx_shape,
+                                                          ConvInfo* info);
+
+CudnnFrontendError_t check_conv_backward_data_graph(ConvBkwdDataDescriptor* desc,
+                                                    cudnnHandle_t* handle);
+
+CudnnFrontendError_t get_conv_backward_data_workspace_size(ConvBkwdDataDescriptor* desc, 
+                                                           int64_t* workspace_size);
+
+CudnnFrontendError_t execute_conv_backward_data(ConvBkwdDataDescriptor* desc,
+                                                ConvBkwdDataBuffers* buffers,
+                                                void* workspace,
+                                                cudnnHandle_t* handle);
+
+typedef struct {
+    void* X;
+    void* DY;
+    void* DW;
+} ConvBkwdFilterBuffers;
+
+typedef struct ConvBkwdFilterDescriptor ConvBkwdFilterDescriptor;
+
+CudnnFrontendError_t create_conv_backward_filter_descriptor(ConvBkwdFilterDescriptor** desc, 
+                                                             CudnnFrontendDataType_t data_type, 
+                                                             CudnnTensorShapeStride* x_shape,
+                                                             CudnnTensorShapeStride* dy_shape,
+                                                             CudnnTensorShapeStride* dw_shape,
+                                                             ConvInfo* info);
+
+CudnnFrontendError_t check_conv_backward_filter_graph(ConvBkwdFilterDescriptor* desc,
+                                                      cudnnHandle_t* handle);
+
+CudnnFrontendError_t get_conv_backward_filter_workspace_size(ConvBkwdFilterDescriptor* desc, 
+                                                             int64_t* workspace_size);
+
+CudnnFrontendError_t execute_conv_backward_filter(ConvBkwdFilterDescriptor* desc,
+                                                  ConvBkwdFilterBuffers* buffers,
+                                                  void* workspace,
+                                                  cudnnHandle_t* handle);
+
 #ifdef __cplusplus
 }
 #endif
